@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>物理化学の立体モデル</title>
+<style>
+:root{--bg:#eef1f4;--panel:#fff;--ink:#15202b;--muted:#5d6b79;--rule:#d5dce4;--accent:#17324d;--ring:#2a5f8f;--ph:#dfe5eb}
+@media (prefers-color-scheme:dark){:root{--bg:#0f151c;--panel:#161e27;--ink:#e8edf2;--muted:#93a1b0;--rule:#2a3541;--accent:#d7e3ef;--ring:#7fb4e6;--ph:#202a35}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 "Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+ padding:32px max(16px,env(safe-area-inset-right)) 40px max(16px,env(safe-area-inset-left))}
+main{max-width:980px;margin:0 auto}
+h1{font-size:1.4rem;margin:0 0 20px;letter-spacing:.02em}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+a.card{display:block;background:var(--panel);border:1px solid var(--rule);border-radius:10px;overflow:hidden;color:inherit;text-decoration:none}
+a.card:hover{border-color:var(--accent)}
+a.card:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.th{aspect-ratio:600/384;background:var(--ph);display:flex;align-items:center;justify-content:center;font-size:2.4rem;color:var(--muted)}
+.th img{width:100%;height:100%;object-fit:cover;display:block}
+.tx{padding:12px 14px 14px}
+.tx b{display:block;font-size:1rem}
+.tx span{display:block;color:var(--muted);font-size:.85rem;margin-top:2px}
+</style></head><body><main>
+<h1>物理化学の立体モデル</h1>
+<div id="grid"></div>
+</main>
+<script src="tools.js"></script>
+<script>
+var g=document.getElementById('grid');
+TOOLS.forEach(function(t){
+  var a=document.createElement('a');a.className='card';a.href=t.path;
+  var th=document.createElement('div');th.className='th';
+  if(t.thumb){var im=new Image();im.alt='';im.src=t.thumb;im.onerror=function(){th.textContent=t.title.charAt(0);im.remove();};th.appendChild(im);}
+  else th.textContent=t.title.charAt(0);
+  var tx=document.createElement('div');tx.className='tx';
+  var b=document.createElement('b');b.textContent=t.title;
+  var s=document.createElement('span');s.textContent=t.desc||'';
+  tx.appendChild(b);tx.appendChild(s);a.appendChild(th);a.appendChild(tx);g.appendChild(a);
+});
+</script>
+</body></html>
