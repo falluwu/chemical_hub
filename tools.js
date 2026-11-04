@@ -27,9 +27,9 @@ var TOOLS = [
     thumb: "cycloalkane.jpg" 
   },
   {
-    title:"2成分の平衡とモル濃度"
-    desc: "XとPとTを回して見る"
-    path: "phase.html"
+    title:"2成分の平衡とモル濃度",
+    desc: "XとPとTを回して見る",
+    path: "phase.html",
     thumb: "phase.jpg"
   }
 ];
