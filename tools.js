@@ -24,6 +24,12 @@ var TOOLS = [
     title: "シクロアルカンの立体配座",
     desc:  "炭素数4〜8の配座を回して見る",
     path:  "cycloalkane.html",
-    thumb: "cycloalkane.jpg"
+    thumb: "cycloalkane.jpg" 
+  },
+  {
+    title:"2成分の平衡とモル濃度"
+    desc: "XとPとTを回して見る"
+    path: "phase.html"
+    thumb: "phase.jpg"
   }
 ];
