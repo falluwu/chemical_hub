@@ -1,41 +1,143 @@
 <!doctype html>
-<html lang="ja"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="color-scheme" content="light dark">
-<title>物理化学の立体モデル</title>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>シクロアルカンの立体配座</title>
+<meta name="claude:viewport-fit-sides" content="cover">
 <style>
-:root{--bg:#eef1f4;--panel:#fff;--ink:#15202b;--muted:#5d6b79;--rule:#d5dce4;--accent:#17324d;--ring:#2a5f8f;--ph:#dfe5eb}
-@media (prefers-color-scheme:dark){:root{--bg:#0f151c;--panel:#161e27;--ink:#e8edf2;--muted:#93a1b0;--rule:#2a3541;--accent:#d7e3ef;--ring:#7fb4e6;--ph:#202a35}}
+/* Layout: 上に炭素数、その下に配座の選択、残りすべてを3D表示に使う。機能は「選ぶ・回す・拡大縮小」だけ。 */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --ink:#15202b; --muted:#5d6b79; --rule:#d5dce4; --soft:#e5e9ee; --plot:#fbfcfd;
+  --accent:#17324d; --onaccent:#ffffff;
+  --cC:#34414f; --cCh:#6f8194; --cH:#e9eef3; --cHs:#aebbc8; --bond:#7d8b99; --ring:#2a5f8f;
+  --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f151c; --panel:#161e27; --ink:#e8edf2; --muted:#93a1b0; --rule:#2a3541; --soft:#202a35; --plot:#111921;
+  --accent:#d7e3ef; --onaccent:#0f151c;
+  --cC:#9db0c4; --cCh:#d7e3ef; --cH:#46576a; --cHs:#2c3a49; --bond:#6a7b8d; --ring:#7fb4e6; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#0f151c; --panel:#161e27; --ink:#e8edf2; --muted:#93a1b0; --rule:#2a3541; --soft:#202a35; --plot:#111921;
+  --accent:#d7e3ef; --onaccent:#0f151c;
+  --cC:#9db0c4; --cCh:#d7e3ef; --cH:#46576a; --cHs:#2c3a49; --bond:#6a7b8d; --ring:#7fb4e6; color-scheme:dark;}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 "Hiragino Sans","Yu Gothic",system-ui,sans-serif;
- padding:32px max(16px,env(safe-area-inset-right)) 40px max(16px,env(safe-area-inset-left))}
-main{max-width:980px;margin:0 auto}
-h1{font-size:1.4rem;margin:0 0 20px;letter-spacing:.02em}
-#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
-a.card{display:block;background:var(--panel);border:1px solid var(--rule);border-radius:10px;overflow:hidden;color:inherit;text-decoration:none}
-a.card:hover{border-color:var(--accent)}
-a.card:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
-.th{aspect-ratio:600/384;background:var(--ph);display:flex;align-items:center;justify-content:center;font-size:2.4rem;color:var(--muted)}
-.th img{width:100%;height:100%;object-fit:cover;display:block}
-.tx{padding:12px 14px 14px}
-.tx b{display:block;font-size:1rem}
-.tx span{display:block;color:var(--muted);font-size:.85rem;margin-top:2px}
-</style></head><body><main>
-<h1>物理化学の立体モデル</h1>
-<div id="grid"></div>
-</main>
-<script src="tools.js"></script>
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);margin:0;
+  padding-block:14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));}
+.app{max-width:980px;margin:0 auto;height:100%;display:flex;flex-direction:column;gap:12px;min-height:0}
+h1{font-size:1.15rem;font-weight:700;margin:0;letter-spacing:.02em}
+.top{display:flex;flex-direction:column;gap:10px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{font:inherit;font-size:.95rem;color:var(--ink);background:var(--panel);border:1px solid var(--rule);
+  padding:8px 14px;border-radius:8px;cursor:pointer;min-height:40px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--onaccent);border-color:var(--accent)}
+.seg button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.seg.sizes button{min-width:92px;text-align:center}
+.sizes small{display:block;font-size:.72rem;opacity:.75}
+.stage{position:relative;flex:1;min-height:300px;background:var(--plot);border:1px solid var(--rule);border-radius:10px;overflow:hidden;touch-action:none}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}
+canvas:active{cursor:grabbing}
+.cap{position:absolute;left:14px;top:12px;pointer-events:none}
+.cap b{display:block;font-size:1.15rem}
+.cap span{font-size:.82rem;color:var(--muted)}
+</style>
+<style>[hidden]{display:none!important}</style></head><body>
+<div class="app">
+  <div class="top">
+    <h1>シクロアルカンの立体配座</h1>
+    <div class="seg sizes" id="sizes" role="group" aria-label="炭素数"></div>
+    <div class="seg" id="confs" role="group" aria-label="配座"></div>
+  </div>
+  <div class="stage" id="stage">
+    <canvas id="cv" aria-label="分子の3Dモデル。ドラッグで回転、ホイールかピンチで拡大縮小"></canvas>
+    <div class="cap"><b id="capName"></b><span id="capSub"></span></div>
+  </div>
+</div>
 <script>
-var g=document.getElementById('grid');
-TOOLS.forEach(function(t){
-  var a=document.createElement('a');a.className='card';a.href=t.path;
-  var th=document.createElement('div');th.className='th';
-  if(t.thumb){var im=new Image();im.alt='';im.src=t.thumb;im.onerror=function(){th.textContent=t.title.charAt(0);im.remove();};th.appendChild(im);}
-  else th.textContent=t.title.charAt(0);
-  var tx=document.createElement('div');tx.className='tx';
-  var b=document.createElement('b');b.textContent=t.title;
-  var s=document.createElement('span');s.textContent=t.desc||'';
-  tx.appendChild(b);tx.appendChild(s);a.appendChild(th);a.appendChild(tx);g.appendChild(a);
+var DATA={"4":[{"id":"puckered","name":"\u6298\u308c\u66f2\u304c\u308a\u5f62","E":31.97,"T":[22,-22,22,-22],"C":[[0.01,0.15,-1.07],[-1.07,-0.15,-0.01],[-0.01,0.15,1.07],[1.07,-0.15,0.01]],"H":[[0.01,-0.52,-1.95],[0.01,1.22,-1.38],[-1.38,-1.22,-0.01],[-1.95,0.52,-0.01],[-0.01,-0.52,1.95],[-0.01,1.22,1.38],[1.38,-1.22,0.01],[1.95,0.52,0.01]]}],"5":[{"id":"envelope","name":"\u5c01\u7b52\u5f62","E":10.94,"T":[40,-40,25,0,-25],"C":[[1.04,0.08,-0.78],[-0.41,-0.21,-1.2],[-1.25,0.26,-0.0],[-0.42,-0.21,1.2],[1.04,0.08,0.78]],"H":[[1.75,-0.65,-1.21],[1.35,1.07,-1.15],[-0.55,-1.3,-1.33],[-0.7,0.27,-2.15],[-2.28,-0.14,-0.0],[-1.33,1.37,-0.0],[-0.56,-1.3,1.33],[-0.7,0.27,2.15],[1.75,-0.65,1.21],[1.35,1.07,1.15]]},{"id":"halfchair","name":"\u534a\u3044\u3059\u5f62","E":10.99,"T":[44,-36,14,14,-36],"C":[[0.37,0.15,-1.23],[-1.02,-0.26,-0.72],[-1.02,0.26,0.72],[0.37,-0.15,1.23],[1.3,0.0,-0.0]],"H":[[0.7,-0.42,-2.11],[0.34,1.22,-1.53],[-1.12,-1.36,-0.73],[-1.85,0.14,-1.33],[-1.85,-0.14,1.33],[-1.12,1.36,0.73],[0.34,-1.22,1.53],[0.7,0.42,2.11],[1.96,-0.88,-0.1],[1.96,0.88,0.1]]}],"6":[{"id":"chair","name":"\u3044\u3059\u5f62","E":3.32,"T":[-54,54,-54,54,-54,54],"C":[[1.44,0.23,-0.37],[1.04,-0.23,1.06],[-0.4,0.23,1.43],[-1.44,-0.23,0.37],[-1.04,0.23,-1.06],[0.4,-0.23,-1.43]],"H":[[1.52,1.33,-0.39],[2.44,-0.16,-0.62],[1.76,0.16,1.8],[1.1,-1.33,1.13],[-0.43,1.33,1.51],[-0.68,-0.16,2.42],[-2.44,0.16,0.62],[-1.52,-1.33,0.39],[-1.1,1.33,-1.13],[-1.76,-0.16,-1.8],[0.68,0.16,-2.42],[0.43,-1.33,-1.51]]},{"id":"twistboat","name":"\u306d\u3058\u308c\u821f\u5f62","E":10.03,"T":[29,-59,29,29,-59,29],"C":[[0.69,0.36,-1.26],[1.53,-0.0,-0.0],[0.69,-0.36,1.26],[-0.69,0.36,1.26],[-1.53,-0.0,0.0],[-0.69,-0.36,-1.26]],"H":[[0.5,1.45,-1.28],[1.25,0.14,-2.18],[2.21,0.85,0.22],[2.21,-0.85,-0.22],[1.25,-0.14,2.18],[0.5,-1.45,1.28],[-0.5,1.45,1.28],[-1.25,0.14,2.18],[-2.21,0.85,-0.22],[-2.21,-0.85,0.22],[-1.25,-0.14,-2.18],[-0.5,-1.45,-1.28]]},{"id":"boat","name":"\u821f\u5f62","E":10.9,"T":[0,49,-49,0,49,-49],"C":[[0.0,0.4,-1.41],[-1.28,-0.2,-0.78],[-1.28,-0.2,0.78],[-0.0,0.4,1.41],[1.28,-0.2,0.78],[1.28,-0.2,-0.78]],"H":[[0.0,0.26,-2.51],[0.0,1.5,-1.25],[-1.4,-1.24,-1.15],[-2.17,0.33,-1.17],[-1.4,-1.24,1.15],[-2.17,0.33,1.17],[-0.0,0.26,2.51],[-0.0,1.5,1.25],[1.4,-1.24,1.15],[2.17,0.33,1.17],[1.4,-1.24,-1.15],[2.17,0.33,-1.17]]}],"7":[{"id":"twistchair","name":"\u306d\u3058\u308c\u3044\u3059\u5f62","E":8.54,"T":[-70,82,-37,-37,82,-70,55],"C":[[1.55,0.13,-0.76],[1.55,-0.13,0.76],[0.32,0.39,1.56],[-0.99,-0.39,1.28],[-1.78,-0.0,-0.0],[-0.99,0.39,-1.28],[0.32,-0.39,-1.56]],"H":[[1.68,1.21,-0.95],[2.46,-0.34,-1.18],[2.46,0.34,1.18],[1.68,-1.21,0.95],[0.18,1.47,1.42],[0.56,0.26,2.63],[-1.67,-0.29,2.14],[-0.76,-1.47,1.25],[-2.46,0.84,0.24],[-2.46,-0.84,-0.24],[-0.76,1.47,-1.25],[-1.67,0.29,-2.14],[0.56,-0.26,-2.63],[0.18,-1.47,-1.42]]},{"id":"chair","name":"\u3044\u3059\u5f62","E":9.23,"T":[0,-64,80,-62,62,-80,64],"C":[[-0.35,-0.42,-1.53],[-1.55,0.21,-0.78],[-1.55,0.21,0.78],[-0.35,-0.42,1.53],[1.02,0.27,1.31],[1.75,-0.11,-0.0],[1.02,0.27,-1.31]],"H":[[-0.28,-1.5,-1.32],[-0.58,-0.37,-2.61],[-2.46,-0.29,-1.13],[-1.67,1.25,-1.14],[-2.46,-0.29,1.13],[-1.67,1.25,1.14],[-0.28,-1.5,1.32],[-0.58,-0.37,2.61],[1.69,-0.03,2.14],[0.92,1.36,1.4],[1.96,-1.19,-0.0],[2.74,0.38,-0.0],[1.69,-0.03,-2.14],[0.92,1.36,-1.4]]},{"id":"twistboat","name":"\u306d\u3058\u308c\u821f\u5f62","E":12.16,"T":[-72,19,60,-43,-43,60,19],"C":[[-0.32,0.24,-1.66],[-1.46,0.48,-0.62],[-1.46,-0.48,0.62],[-0.32,-0.24,1.66],[0.92,0.58,1.19],[1.73,0.0,-0.0],[0.92,-0.58,-1.19]],"H":[[-0.75,-0.32,-2.51],[-0.0,1.2,-2.09],[-2.43,0.4,-1.13],[-1.44,1.52,-0.26],[-1.44,-1.52,0.26],[-2.43,-0.4,1.13],[-0.0,-1.2,2.09],[-0.75,0.32,2.51],[1.6,0.72,2.04],[0.6,1.6,0.93],[2.4,-0.79,0.37],[2.4,0.79,-0.37],[0.6,-1.6,-0.93],[1.6,-0.72,-2.04]]}],"8":[{"id":"boatchair","name":"\u821f-\u3044\u3059\u5f62","E":11.8,"T":[-64,99,-43,-63,63,43,-99,64],"C":[[1.22,0.31,-1.35],[1.96,0.09,0.0],[1.22,0.31,1.35],[0.01,-0.63,1.64],[-1.4,-0.07,1.33],[-1.61,0.7,-0.0],[-1.4,-0.07,-1.33],[0.01,-0.63,-1.64]],"H":[[0.93,1.37,-1.47],[1.97,0.14,-2.14],[2.85,0.75,0.0],[2.38,-0.94,0.0],[0.93,1.37,1.47],[1.97,0.14,2.14],[0.01,-0.88,2.72],[0.17,-1.61,1.16],[-1.67,0.62,2.14],[-2.14,-0.89,1.4],[-1.0,1.61,-0.0],[-2.65,1.08,-0.0],[-1.67,0.62,-2.14],[-2.14,-0.89,-1.4],[0.01,-0.88,-2.72],[0.17,-1.61,-1.16]]},{"id":"crown","name":"\u738b\u51a0\u5f62","E":12.17,"T":[84,-84,84,-84,84,-84,84,-84],"C":[[-1.1,0.29,-1.53],[-1.85,-0.29,-0.3],[-1.53,0.29,1.1],[-0.3,-0.29,1.85],[1.1,0.29,1.53],[1.85,-0.29,0.3],[1.53,0.29,-1.1],[0.3,-0.29,-1.85]],"H":[[-1.73,0.05,-2.41],[-1.07,1.39,-1.49],[-1.81,-1.39,-0.3],[-2.92,-0.05,-0.48],[-2.41,0.05,1.73],[-1.49,1.39,1.07],[-0.3,-1.39,1.81],[-0.48,-0.05,2.92],[1.73,0.05,2.41],[1.07,1.39,1.49],[1.81,-1.39,0.3],[2.92,-0.05,0.48],[2.41,0.05,-1.73],[1.49,1.39,-1.07],[0.3,-1.39,-1.81],[0.48,-0.05,-2.92]]},{"id":"boatboat","name":"\u821f-\u821f\u5f62","E":13.25,"T":[-51,-51,51,51,-51,-51,51,51],"C":[[1.9,-0.0,0.17],[1.03,-0.74,1.22],[-0.17,0.0,1.9],[-1.22,0.74,1.03],[-1.9,-0.0,-0.17],[-1.03,-0.74,-1.22],[0.17,0.0,-1.9],[1.22,0.74,-1.03]],"H":[[2.53,0.74,0.7],[2.61,-0.74,-0.25],[1.7,-1.07,2.03],[0.69,-1.7,0.82],[0.25,0.74,2.61],[-0.7,-0.74,2.53],[-0.82,1.7,0.69],[-2.03,1.07,1.7],[-2.53,0.74,-0.7],[-2.61,-0.74,0.25],[-1.7,-1.07,-2.03],[-0.69,-1.7,-0.82],[-0.25,0.74,-2.61],[0.7,-0.74,-2.53],[0.82,1.7,-0.69],[2.03,1.07,-1.7]]}]};
+var NAMES={4:'シクロブタン',5:'シクロペンタン',6:'シクロヘキサン',7:'シクロヘプタン',8:'シクロオクタン'};
+var $=function(i){return document.getElementById(i);};
+var st={n:6,i:0,rx:0.35,ry:0.6,zoom:1};
+var cv=$('cv'),cx=cv.getContext('2d'),W=0,H=0,dpr=1,M=null;
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+function buildSizes(){
+  var b=$('sizes');b.innerHTML='';
+  [4,5,6,7,8].forEach(function(n){
+    var e=document.createElement('button');e.type='button';e.setAttribute('data-n',n);
+    e.innerHTML='C'+n+'<small>'+NAMES[n]+'</small>';b.appendChild(e);});
+}
+function buildConfs(){
+  var b=$('confs');b.innerHTML='';
+  DATA[st.n].forEach(function(c,k){
+    var e=document.createElement('button');e.type='button';e.setAttribute('data-i',k);e.textContent=c.name;b.appendChild(e);});
+}
+function press(){
+  Array.prototype.forEach.call($('sizes').children,function(e){e.setAttribute('aria-pressed',+e.getAttribute('data-n')===st.n?'true':'false');});
+  Array.prototype.forEach.call($('confs').children,function(e){e.setAttribute('aria-pressed',+e.getAttribute('data-i')===st.i?'true':'false');});
+  var c=DATA[st.n][st.i];
+  $('capName').textContent=c.name;$('capSub').textContent=NAMES[st.n]+'(C'+st.n+'H'+(2*st.n)+')';
+}
+function load(){
+  var c=DATA[st.n][st.i],n=st.n,at=[],bd=[],i,j;
+  for(i=0;i<n;i++)at.push({p:c.C[i],c:1});
+  for(i=0;i<2*n;i++)at.push({p:c.H[i],c:0});
+  for(i=0;i<n;i++){bd.push([i,(i+1)%n,1]);bd.push([i,n+2*i,0]);bd.push([i,n+2*i+1,0]);}
+  M={at:at,bd:bd};
+}
+function select(n,i){
+  if(n!==st.n){st.n=n;buildConfs();}
+  st.i=i;st.rx=0.35;st.ry=0.6;load();press();draw();
+}
+function resize(){
+  var r=$('stage').getBoundingClientRect();dpr=Math.min(window.devicePixelRatio||1,2);
+  W=r.width;H=r.height;cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);draw();
+}
+function draw(){
+  if(!M||!W)return;
+  var x=cx;x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,W,H);
+  var cr=Math.cos(st.rx),sr=Math.sin(st.rx),cy=Math.cos(st.ry),sy=Math.sin(st.ry);
+  var S=Math.min(W,H)/(6.2)*st.zoom,D=14,i,q=[];
+  for(i=0;i<M.at.length;i++){
+    var p=M.at[i].p,x1=p[0]*cy+p[2]*sy,z1=-p[0]*sy+p[2]*cy,y1=p[1];
+    var y2=y1*cr-z1*sr,z2=y1*sr+z1*cr,f=D/(D-z2);
+    q.push({x:W/2+x1*f*S,y:H/2-y2*f*S,z:z2,f:f,c:M.at[i].c});
+  }
+  var items=[];
+  M.bd.forEach(function(b){var a=q[b[0]],c=q[b[1]];items.push({t:0,z:(a.z+c.z)/2,a:a,b:c,r:b[2]});});
+  q.forEach(function(a){items.push({t:1,z:a.z,a:a});});
+  items.sort(function(u,v){return u.z-v.z;});
+  var cC=css('--cC'),cCh=css('--cCh'),cH=css('--cH'),cHs=css('--cHs'),bond=css('--bond'),ring=css('--ring');
+  x.lineCap='round';
+  items.forEach(function(it){
+    if(it.t===0){
+      var a=it.a,b=it.b,w=(it.r?0.19:0.1)*S*(a.f+b.f)/2;
+      x.strokeStyle=it.r?ring:bond;x.lineWidth=w;x.beginPath();x.moveTo(a.x,a.y);x.lineTo(b.x,b.y);x.stroke();
+    }else{
+      var a=it.a,rad=(a.c?0.34:0.21)*S*a.f;
+      var g=x.createRadialGradient(a.x-rad*.35,a.y-rad*.4,rad*.1,a.x,a.y,rad);
+      g.addColorStop(0,a.c?cCh:cH);g.addColorStop(1,a.c?cC:cHs);
+      x.fillStyle=g;x.beginPath();x.arc(a.x,a.y,rad,0,6.2832);x.fill();
+    }
+  });
+}
+/* 操作: ドラッグで回転、ホイールとピンチで拡大縮小 */
+var ptr={},pd=0;
+cv.addEventListener('pointerdown',function(e){cv.setPointerCapture(e.pointerId);ptr[e.pointerId]=[e.clientX,e.clientY];pd=pdist();});
+function pdist(){var k=Object.keys(ptr);if(k.length<2)return 0;var a=ptr[k[0]],b=ptr[k[1]];return Math.hypot(a[0]-b[0],a[1]-b[1]);}
+cv.addEventListener('pointermove',function(e){
+  var o=ptr[e.pointerId];if(!o)return;var k=Object.keys(ptr);
+  if(k.length>=2){ptr[e.pointerId]=[e.clientX,e.clientY];var d=pdist();if(pd>0&&d>0)st.zoom=Math.max(.5,Math.min(3,st.zoom*d/pd));pd=d;}
+  else{st.ry+=(e.clientX-o[0])*0.01;st.rx=Math.max(-1.5,Math.min(1.5,st.rx+(e.clientY-o[1])*0.01));ptr[e.pointerId]=[e.clientX,e.clientY];}
+  draw();
 });
+function up(e){delete ptr[e.pointerId];pd=pdist();}
+cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+cv.addEventListener('wheel',function(e){e.preventDefault();st.zoom=Math.max(.5,Math.min(3,st.zoom*Math.exp(-e.deltaY*0.001)));draw();},{passive:false});
+$('sizes').addEventListener('click',function(e){var b=e.target.closest('button');if(b)select(+b.getAttribute('data-n'),0);});
+$('confs').addEventListener('click',function(e){var b=e.target.closest('button');if(b)select(st.n,+b.getAttribute('data-i'));});
+window.addEventListener('resize',resize);
+if(window.matchMedia)window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+new MutationObserver(draw).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+buildSizes();buildConfs();load();press();resize();
+window.__cyc={select:select,st:st};
 </script>
+
 </body></html>
