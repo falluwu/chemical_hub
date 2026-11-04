@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>
+<title>軌道の立体モデル</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: 左に回せる半透明の軌道(スクロール中も固定)、右に軌道の選択・しきい値・説明。分子軌道では距離と混ぜ方、エネルギー準位の模式図が加わる。スマホは1列。 */
+:root{
+  --bg:#eef1f5; --panel:#ffffff; --ink:#121b27; --muted:#5b6878; --rule:#d3dae3; --soft:#e6eaf0; --plot:#fbfcfe;
+  --pos:#3f5bd8; --neg:#dd8216; --node:#5b6878; --aux:#7a8696;
+  --font:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo","Noto Sans JP",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e141b; --panel:#151d27; --ink:#e8edf3; --muted:#94a1b2; --rule:#2a3542; --soft:#1f2935; --plot:#101820;
+    --pos:#8197ff; --neg:#ffb04a; --node:#9aa7b8; --aux:#8896a8; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e141b; --panel:#151d27; --ink:#e8edf3; --muted:#94a1b2; --rule:#2a3542; --soft:#1f2935; --plot:#101820;
+  --pos:#8197ff; --neg:#ffb04a; --node:#9aa7b8; --aux:#8896a8; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--ink); font:14px/1.6 var(--font);
+  padding-block:20px 40px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap{max-width:1180px;margin:0 auto}
+header{margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px 24px;align-items:flex-end;justify-content:space-between}
+h1{font-size:22px;line-height:1.3;margin:0 0 4px;letter-spacing:.01em;text-wrap:balance}
+.lede{margin:0;color:var(--muted);max-width:60ch}
+h2{font-size:17px;line-height:1.4;margin:0;text-wrap:balance}
+
+.layout{display:flex;flex-direction:column;gap:16px}
+@media (min-width:960px){
+  .layout{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:20px;align-items:start}
+  .stage{position:sticky;top:calc(12px + env(safe-area-inset-top, 0px))}
+}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:14px;min-width:0}
+.label{font-size:12px;color:var(--muted);letter-spacing:.06em;margin:0 0 8px;font-weight:600}
+.stack{display:flex;flex-direction:column;gap:14px}
+
+.stage{background:var(--plot);border:1px solid var(--rule);border-radius:8px;overflow:hidden;min-width:0}
+.stage-head{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--rule);background:var(--panel)}
+.chip-p,.chip-n,.chip-z{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600}
+.chip-p::before,.chip-n::before,.chip-z::before{content:"";width:12px;height:12px;border-radius:2px;background:var(--c)}
+.chip-p{--c:var(--pos)}.chip-n{--c:var(--neg)}.chip-z{--c:var(--node)}
+.stage-head .rule{color:var(--muted);font-size:12px;flex:1 1 200px;min-width:0}
+.cvwrap{position:relative;aspect-ratio:4/3;max-width:100%}
+.cvwrap canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#gl{touch-action:none;cursor:grab}
+#gl:active{cursor:grabbing}
+#ov{pointer-events:none}
+.nogl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--muted)}
+.nogl[hidden]{display:none}
+.stage-foot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 12px;align-items:center;padding:8px 12px;border-top:1px solid var(--rule);background:var(--panel);color:var(--muted);font-size:12px}
+
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.ghost{background:none;border:1px solid var(--rule);border-radius:999px;padding:3px 12px;font-size:12px;color:var(--ink)}
+.ghost:hover{background:var(--soft)}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--rule);border-radius:6px;overflow:hidden;background:var(--soft)}
+.seg button{border:0;background:none;padding:6px 14px;font-size:13px}
+.seg button+button{border-left:1px solid var(--rule)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel);font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{border:1px solid var(--rule);background:var(--panel);border-radius:6px;padding:5px 11px;font-size:13px;line-height:1.5}
+.chips button:hover{background:var(--soft)}
+.chips button[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink);font-weight:600}
+.chips .tag{font-size:11px;opacity:.75;margin-left:6px}
+.tog{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--rule);background:var(--panel);border-radius:999px;padding:4px 12px 4px 8px;font-size:13px}
+.tog::before{content:"";width:12px;height:12px;border-radius:3px;border:1.5px solid var(--muted)}
+.tog[aria-pressed="true"]{border-color:var(--ink)}
+.tog[aria-pressed="true"]::before{background:var(--ink);border-color:var(--ink);box-shadow:inset 0 0 0 2px var(--panel)}
+.togs{display:flex;flex-wrap:wrap;gap:8px}
+
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.row label{font-weight:600}
+output{font-family:var(--mono);font-size:13px;text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;height:30px;margin:0;accent-color:var(--ink)}
+.hint{margin:0;color:var(--muted);font-size:12.5px}
+
+.info h2{margin-bottom:2px}
+.info .sub{margin:0 0 10px;color:var(--muted);font-family:var(--mono);font-size:12.5px}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0 0 10px}
+.facts dt{color:var(--muted);font-size:12.5px;white-space:nowrap}
+.facts dd{margin:0}
+.info p{margin:0}
+.info p+p{margin-top:8px}
+
+#en{aspect-ratio:4/3;width:100%;background:var(--plot);border:1px solid var(--rule);border-radius:6px;display:block}
+.sbar{display:flex;align-items:center;gap:10px;margin-top:10px}
+.sbar span{font-size:12.5px;color:var(--muted);white-space:nowrap}
+.sbar .bar{flex:1;height:8px;border-radius:4px;background:var(--soft);overflow:hidden}
+.sbar .bar i{display:block;height:100%;background:var(--ink);width:0}
+.notes ul{margin:0 0 12px;padding-left:1.2em}
+.notes li{margin:3px 0}
+.notes p{margin:0;color:var(--muted);font-size:12.5px}
+sub{font-size:.75em;line-height:0}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div>
+    <h1>軌道の立体モデル</h1>
+    <p class="lede">s・p・d・f 軌道と、σ・π 分子軌道の形を、回しながら確かめます。</p>
+  </div>
+  <div class="seg" id="tabSeg" role="group" aria-label="表示する軌道">
+    <button type="button" data-t="ao" aria-pressed="true">原子軌道 s・p・d・f</button>
+    <button type="button" data-t="mo" aria-pressed="false">分子軌道 σ・π</button>
+  </div>
+</header>
+
+<div class="layout">
+  <section class="stage" aria-label="軌道の立体">
+    <div class="stage-head">
+      <span class="chip-p">位相 +</span><span class="chip-n">位相 −</span><span class="chip-z" id="legNode">灰色の面 = 節面</span>
+      <span class="rule" id="ruleTxt"></span>
+    </div>
+    <div class="cvwrap">
+      <canvas id="gl" role="img" aria-label="軌道の3次元モデル。ドラッグで回転できる"></canvas>
+      <canvas id="ov"></canvas>
+      <div class="nogl" id="nogl" hidden>この環境では3D表示(WebGL)が使えません。別のブラウザで開いてください。</div>
+    </div>
+    <div class="stage-foot"><span>ドラッグで回転 / ピンチ・ホイールで拡大縮小</span><button class="ghost" id="resetView" type="button">視点をもどす</button></div>
+  </section>
+
+  <div class="col">
+    <section class="panel" id="panelAO" aria-label="原子軌道の選択">
+      <div class="stack">
+        <div>
+          <p class="label">軌道の種類</p>
+          <div class="seg" id="lSeg" role="group" aria-label="s p d f">
+            <button type="button" data-l="0" aria-pressed="false">s</button>
+            <button type="button" data-l="1" aria-pressed="true">p</button>
+            <button type="button" data-l="2" aria-pressed="false">d</button>
+            <button type="button" data-l="3" aria-pressed="false">f</button>
+          </div>
+        </div>
+        <div>
+          <p class="label">軌道</p>
+          <div class="chips" id="orbChips"></div>
+          <p class="hint" style="margin-top:8px">ここに表示している s・p・d・f の各軌道は、それぞれ 1s・2p・3d・4f 軌道を例にした形です。主量子数が大きくなると、動径方向の節が増え、全体も大きくなります。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panelMO" aria-label="分子軌道の選択" hidden>
+      <div class="stack">
+        <div>
+          <p class="label">原子軌道の組み合わせ(原子 A と B を z 軸上に並べる)</p>
+          <div class="chips" id="moChips"></div>
+        </div>
+        <div>
+          <p class="label">結合性か反結合性か</p>
+          <div class="seg" id="antiSeg" role="group" aria-label="結合性・反結合性">
+            <button type="button" data-a="0" aria-pressed="true">結合性</button>
+            <button type="button" data-a="1" aria-pressed="false">反結合性</button>
+          </div>
+        </div>
+        <div>
+          <div class="row"><label for="rR">原子核の間の距離</label><output id="oR"></output></div>
+          <input type="range" id="rR" min="1.2" max="7" step="0.1" value="3">
+        </div>
+        <div>
+          <div class="row"><label for="rMix">A 原子の寄与</label><output id="oMix"></output></div>
+          <input type="range" id="rMix" min="5" max="95" step="1" value="50">
+          <p class="hint">真ん中は同じ原子どうし。動かすと、片方の原子に偏った(極性のある)軌道になります。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="表示の設定">
+      <div class="stack">
+        <div class="togs">
+          <button type="button" class="tog" id="tgNode" aria-pressed="true">節面を表示</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel info" aria-live="polite">
+      <h2 id="iName"></h2>
+      <p class="sub" id="iSub"></p>
+      <dl class="facts" id="iFacts"></dl>
+      <p id="iDesc"></p>
+    </section>
+
+    <section class="panel" id="panelEn" hidden>
+      <p class="label">エネルギー準位の模式図(同じ原子どうしの場合)</p>
+      <canvas id="en" role="img" aria-label="原子軌道と分子軌道のエネルギー準位の模式図"></canvas>
+      <div class="sbar"><span>軌道の重なり</span><div class="bar"><i id="sFill"></i></div><span id="sNum"></span></div>
+      <p class="hint" style="margin-top:8px">距離を縮めると重なりが大きくなり、結合性と反結合性の差が広がります。反結合性のほうが、結合性より大きく上がります。</p>
+    </section>
+
+    <section class="panel notes">
+      <p class="label">読み方</p>
+      <ul>
+        <li>青と橙は、波動関数 ψ の符号(位相)の違いです。電子の電荷ではありません。</li>
+        <li>色が変わる境目が節面です。節面では ψ = 0 で、電子はそこにほとんどいません。</li>
+        <li>分子軌道は、2つの原子軌道の足し算と引き算(LCAO)でできます。同じ位相が重なると結合性、逆の位相が向き合うと反結合性です。</li>
+      </ul>
+      <p id="modelNote"></p>
+    </section>
+  </div>
+</div>
+</div>
+
+<script>
+(function(){
+'use strict';
+function $(id){return document.getElementById(id);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+
+/* ================= 軌道の定義 =================
+   ψ = P(x,y,z) × exp(−ζ r)   P は l 次の同次多項式(角度部分 × r^l)。動径は節のない最も簡単な形。 */
+var ZETA=[1.0,1.4,1.8,2.2];
+var ORBS={
+  0:[{id:'s',h:'s',l:0,P:function(){return 1;},ang:'1(球対称)',planes:'なし',
+      d:'球形で、どの向きから見ても同じです。全体が同じ位相(+)です。'}],
+  1:[{id:'px',h:'p<sub>x</sub>',l:1,P:function(x){return x;},ang:'x / r',planes:'yz 平面',
+      d:'x 軸方向に伸びる2つのローブ。+ と − が向かい合い、原点を通る yz 平面が節面です。'},
+     {id:'py',h:'p<sub>y</sub>',l:1,P:function(x,y){return y;},ang:'y / r',planes:'xz 平面',
+      d:'y 軸方向に伸びる2つのローブ。節面は xz 平面です。'},
+     {id:'pz',h:'p<sub>z</sub>',l:1,P:function(x,y,z){return z;},ang:'z / r',planes:'xy 平面',
+      d:'z 軸方向に伸びる2つのローブ。節面は xy 平面です。'}],
+  2:[{id:'dz2',h:'d<sub>z²</sub>',l:2,P:function(x,y,z){return 2*z*z-x*x-y*y;},ang:'(3z² − r²) / r²',planes:'2つの円錐面',
+      d:'z 軸上の2つのローブ(+)と、xy 平面を囲むドーナツ(−)。節面は2つの円錐面です。'},
+     {id:'dxz',h:'d<sub>xz</sub>',l:2,P:function(x,y,z){return x*z;},ang:'xz / r²',planes:'xy 平面と yz 平面',
+      d:'xz 面内で、x 軸と z 軸の間に4つのローブ。節面は xy 平面と yz 平面です。'},
+     {id:'dyz',h:'d<sub>yz</sub>',l:2,P:function(x,y,z){return y*z;},ang:'yz / r²',planes:'xy 平面と xz 平面',
+      d:'yz 面内で、y 軸と z 軸の間に4つのローブ。節面は xy 平面と xz 平面です。'},
+     {id:'dxy',h:'d<sub>xy</sub>',l:2,P:function(x,y){return x*y;},ang:'xy / r²',planes:'xz 平面と yz 平面',
+      d:'xy 面内で、x 軸と y 軸の間に4つのローブ。節面は xz 平面と yz 平面です。'},
+     {id:'dx2y2',h:'d<sub>x²−y²</sub>',l:2,P:function(x,y){return x*x-y*y;},ang:'(x² − y²) / r²',planes:'x = y と x = −y の2平面',
+      d:'xy 面内で、x 軸と y 軸の上に4つのローブ。節面は対角線を通る2つの平面です。'}],
+  3:[{id:'fz3',h:'f<sub>z³</sub>',l:3,P:function(x,y,z){return z*(2*z*z-3*x*x-3*y*y);},ang:'z(5z² − 3r²) / r³',planes:'xy 平面と2つの円錐面',
+      d:'z 軸上の2つのローブと、それを囲む2つのリング(上下で位相が逆)。節面は xy 平面と2つの円錐面です。'},
+     {id:'fxz2',h:'f<sub>xz²</sub>',l:3,P:function(x,y,z){return x*(4*z*z-x*x-y*y);},ang:'x(5z² − r²) / r³',planes:'yz 平面と2つの円錐面',
+      d:'6つのローブ。節面は yz 平面と、z 軸まわりの2つの円錐面です。'},
+     {id:'fyz2',h:'f<sub>yz²</sub>',l:3,P:function(x,y,z){return y*(4*z*z-x*x-y*y);},ang:'y(5z² − r²) / r³',planes:'xz 平面と2つの円錐面',
+      d:'6つのローブ。節面は xz 平面と、z 軸まわりの2つの円錐面です。'},
+     {id:'fxyz',h:'f<sub>xyz</sub>',l:3,P:function(x,y,z){return x*y*z;},ang:'xyz / r³',planes:'xy・yz・zx の3平面',
+      d:'8つのローブが、立方体の頂点の向きに伸びます。節面は座標面の3枚です。'},
+     {id:'fzxy',h:'f<sub>z(x²−y²)</sub>',l:3,P:function(x,y,z){return z*(x*x-y*y);},ang:'z(x² − y²) / r³',planes:'xy 平面と、x = ±y の2平面',
+      d:'8つのローブ。節面は xy 平面と、対角線を通る2つの平面です。'},
+     {id:'fx3',h:'f<sub>x(x²−3y²)</sub>',l:3,P:function(x,y){return x*(x*x-3*y*y);},ang:'x(x² − 3y²) / r³',planes:'z 軸を通る3つの平面',
+      d:'xy 面内に6つのローブが並びます。節面は z 軸を通る3つの平面です。'},
+     {id:'fy3',h:'f<sub>y(3x²−y²)</sub>',l:3,P:function(x,y){return y*(3*x*x-y*y);},ang:'y(3x² − y²) / r³',planes:'z 軸を通る3つの平面',
+      d:'xy 面内に6つのローブが並びます。節面は z 軸を通る3つの平面です。'}]
+};
+var ORBBYID={};
+[0,1,2,3].forEach(function(l){ORBS[l].forEach(function(o){ORBBYID[o.id]=o;});});
+var LNAME=['s','p','d','f'];
+
+/* 分子軌道の組み合わせ。A は z = −R/2、B は z = +R/2。 */
+var MOS=[
+  {id:'ss',h:'s − s',kind:'σ',A:'s',B:'s',R0:2.2,axisPlanes:0,axisText:'なし'},
+  {id:'spz',h:'s − p<sub>z</sub>',kind:'σ',A:'s',B:'pz',R0:2.4,axisPlanes:0,axisText:'なし'},
+  {id:'pzpz',h:'p<sub>z</sub> − p<sub>z</sub>',kind:'σ',A:'pz',B:'pz',R0:3.0,axisPlanes:0,axisText:'なし'},
+  {id:'pxpx',h:'p<sub>x</sub> − p<sub>x</sub>',kind:'π',A:'px',B:'px',R0:3.0,axisPlanes:1,axisText:'yz 平面'},
+  {id:'pypy',h:'p<sub>y</sub> − p<sub>y</sub>',kind:'π',A:'py',B:'py',R0:3.0,axisPlanes:1,axisText:'xz 平面'},
+  {id:'dz2dz2',h:'d<sub>z²</sub> − d<sub>z²</sub>',kind:'σ',A:'dz2',B:'dz2',R0:3.6,axisPlanes:0,axisText:'なし'},
+  {id:'dxzdxz',h:'d<sub>xz</sub> − d<sub>xz</sub>',kind:'π',A:'dxz',B:'dxz',R0:3.6,axisPlanes:1,axisText:'yz 平面'},
+  {id:'dxydxy',h:'d<sub>xy</sub> − d<sub>xy</sub>',kind:'δ',A:'dxy',B:'dxy',R0:3.6,axisPlanes:2,axisText:'xz 平面と yz 平面'}
+];
+var MOBYID={};MOS.forEach(function(m){MOBYID[m.id]=m;});
+var KINDDESC={
+  'σ':'結合軸(z 軸)のまわりに回しても形が変わりません。結合軸を含む節面はありません。',
+  'π':'結合軸を含む節面が1枚あります。結合軸をはさんで、上下(または左右)に2つに分かれた形です。',
+  'δ':'結合軸を含む節面が2枚あります。結合軸のまわりに4つに分かれた形で、d 軌道どうしの結合で現れます。'
+};
+
+/* ================= 状態 ================= */
+var FEXT=0.05;
+var state={tab:'ao',kkL:{0:2,1:2,2:2,3:2},l:1,orb:'pz',nodes:true,aux:false,
+  az:-0.7,el:0.42,zoom:1,
+  mo:{id:'pzpz',anti:false,R:3.0,pA:0.5}};
+var AZ0=-0.7,EL0=0.42;
+
+/* ================= スカラー場 ================= */
+function makeGrid(nx,ny,nz,Lx,Ly,Lz){
+  var n=nx*ny*nz;
+  return {nx:nx,ny:ny,nz:nz,ox:-Lx,oy:-Ly,oz:-Lz,dx:2*Lx/(nx-1),dy:2*Ly/(ny-1),dz:2*Lz/(nz-1),
+    F:new Float32Array(n),gx:new Float32Array(n),gy:new Float32Array(n),gz:new Float32Array(n),max:0};
+}
+function gradient(S){
+  var nx=S.nx,ny=S.ny,nz=S.nz,F=S.F,nxy=nx*ny,i,j,k,idx,m=0;
+  for(k=0;k<nz;k++){for(j=0;j<ny;j++){for(i=0;i<nx;i++){
+    idx=(k*ny+j)*nx+i;
+    var cx=(i<nx-1?1:0)+(i>0?1:0),cy=(j<ny-1?1:0)+(j>0?1:0),cz=(k<nz-1?1:0)+(k>0?1:0);
+    S.gx[idx]=(F[i<nx-1?idx+1:idx]-F[i>0?idx-1:idx])/(cx*S.dx);
+    S.gy[idx]=(F[j<ny-1?idx+nx:idx]-F[j>0?idx-nx:idx])/(cy*S.dy);
+    S.gz[idx]=(F[k<nz-1?idx+nxy:idx]-F[k>0?idx-nxy:idx])/(cz*S.dz);
+    var a=Math.abs(F[idx]);if(a>m)m=a;
+  }}}
+  S.max=m;
+}
+/* しきい値 f(最大値に対する割合)で ψ が見えなくなる半径 */
+function envExt(l,zeta,f){
+  var rp=l/zeta,pk=l===0?1:Math.pow(rp,l)*Math.exp(-l),r=rp;
+  while(r<80&&Math.pow(r,l)*Math.exp(-zeta*r)>=f*pk)r+=0.04;
+  return r;
+}
+var AMAX={};
+function angMax(o){
+  if(AMAX[o.id]!==undefined)return AMAX[o.id];
+  var m=0,n=1500,ga=Math.PI*(3-Math.sqrt(5));
+  for(var i=0;i<n;i++){
+    var z=1-2*(i+0.5)/n,r=Math.sqrt(1-z*z),t=ga*i;
+    var v=Math.abs(o.P(r*Math.cos(t),r*Math.sin(t),z));if(v>m)m=v;
+  }
+  AMAX[o.id]=m;return m;
+}
+
+/* ================= 等値面(マーチング四面体) ================= */
+var CO=[[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]];
+var TETS=[[0,5,1,6],[0,1,2,6],[0,2,3,6],[0,3,7,6],[0,7,4,6],[0,4,5,6]];
+function isoMesh(S,level,sgn,layer,out,filt,nodal){
+  var nx=S.nx,ny=S.ny,nz=S.nz,F=S.F,nxy=nx*ny;
+  var off=[0,1,1+nx,nx,nxy,nxy+1,nxy+1+nx,nxy+nx];
+  var v=new Float32Array(8),nd=new Int32Array(8),ns=nodal?1:-sgn;
+  var tp=new Float32Array(9),tn=new Float32Array(9);
+  var ci=0,cj=0,ck=0,iv=[0,0,0,0],ov=[0,0,0,0];
+  function vert(a,b,slot){
+    var va=v[a],vb=v[b],t=(level-va)/(vb-va),ia=nd[a],ib=nd[b],s=slot*3;
+    var xa=S.ox+(ci+CO[a][0])*S.dx,xb=S.ox+(ci+CO[b][0])*S.dx;
+    var ya=S.oy+(cj+CO[a][1])*S.dy,yb=S.oy+(cj+CO[b][1])*S.dy;
+    var za=S.oz+(ck+CO[a][2])*S.dz,zb=S.oz+(ck+CO[b][2])*S.dz;
+    tp[s]=xa+(xb-xa)*t;tp[s+1]=ya+(yb-ya)*t;tp[s+2]=za+(zb-za)*t;
+    var gx=S.gx[ia]+(S.gx[ib]-S.gx[ia])*t,gy=S.gy[ia]+(S.gy[ib]-S.gy[ia])*t,gz=S.gz[ia]+(S.gz[ib]-S.gz[ia])*t;
+    var l=Math.sqrt(gx*gx+gy*gy+gz*gz);
+    if(l<1e-20){gx=0;gy=0;gz=1;l=1;}
+    tn[s]=ns*gx/l;tn[s+1]=ns*gy/l;tn[s+2]=ns*gz/l;
+  }
+  function tri(a0,a1,b0,b1,c0,c1){
+    vert(a0,a1,0);vert(b0,b1,1);vert(c0,c1,2);
+    if(filt&&!filt((tp[0]+tp[3]+tp[6])/3,(tp[1]+tp[4]+tp[7])/3,(tp[2]+tp[5]+tp[8])/3))return;
+    for(var m=0;m<9;m++){out.p.push(tp[m]);out.n.push(tn[m]);}
+    out.l.push(layer,layer,layer);
+  }
+  var i,j,k,c,q,n0,mn,mx,ni,no,T;
+  for(k=0;k<nz-1;k++){for(j=0;j<ny-1;j++){for(i=0;i<nx-1;i++){
+    n0=(k*ny+j)*nx+i;mn=1e30;mx=-1e30;
+    for(c=0;c<8;c++){nd[c]=n0+off[c];v[c]=sgn*F[nd[c]];if(v[c]<mn)mn=v[c];if(v[c]>mx)mx=v[c];}
+    if(mx<=level||mn>level)continue;
+    ci=i;cj=j;ck=k;
+    for(q=0;q<6;q++){
+      T=TETS[q];ni=0;no=0;
+      for(c=0;c<4;c++){var cc=T[c];if(v[cc]>level)iv[ni++]=cc;else ov[no++]=cc;}
+      if(ni===1){tri(iv[0],ov[0],iv[0],ov[1],iv[0],ov[2]);}
+      else if(ni===3){tri(ov[0],iv[0],ov[0],iv[1],ov[0],iv[2]);}
+      else if(ni===2){
+        tri(iv[0],ov[0],iv[0],ov[1],iv[1],ov[1]);
+        tri(iv[0],ov[0],iv[1],ov[1],iv[1],ov[0]);
+      }
+    }
+  }}}
+}
+
+/* ================= シーン(原子軌道・分子軌道) ================= */
+var scene={T:0,rb:1,info:null,mo:null};
+var stats={ms:0,tri:0};
+
+/* 教科書の形: 角度部分 |Y|^k を原点からの距離にした境界面。符号が変わる方向では距離が 0 になり、くびれる。 */
+function buildAOShape(){
+  var o=ORBBYID[state.orb],A=angMax(o),k=state.kkL[o.l],nt=90,np=120,i,j,t;
+  var P=new Float32Array((nt+1)*np*3),V=new Float32Array((nt+1)*np),N=new Float32Array((nt+1)*np*3);
+  for(i=0;i<=nt;i++){
+    var th=Math.PI*i/nt,st=Math.sin(th),ct=Math.cos(th);
+    for(j=0;j<np;j++){
+      var ph=2*Math.PI*j/np,dx=st*Math.cos(ph),dy=st*Math.sin(ph),dz=ct;
+      var pv=o.P(dx,dy,dz),r=Math.pow(Math.abs(pv)/A,k),id=i*np+j;
+      P[id*3]=dx*r;P[id*3+1]=dy*r;P[id*3+2]=dz*r;V[id]=pv;
+    }
+  }
+  var tris=[];
+  for(i=0;i<nt;i++){for(j=0;j<np;j++){
+    var a=i*np+j,b=(i+1)*np+j,c=(i+1)*np+(j+1)%np,d=i*np+(j+1)%np;
+    tris.push(a,b,c,a,c,d);
+  }}
+  for(t=0;t<tris.length;t+=3){
+    var ia=tris[t]*3,ib=tris[t+1]*3,ic=tris[t+2]*3;
+    var ux=P[ib]-P[ia],uy=P[ib+1]-P[ia+1],uz=P[ib+2]-P[ia+2],vx=P[ic]-P[ia],vy=P[ic+1]-P[ia+1],vz=P[ic+2]-P[ia+2];
+    var nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
+    [ia,ib,ic].forEach(function(q){N[q]+=nx;N[q+1]+=ny;N[q+2]+=nz;});
+  }
+  for(t=0;t<N.length;t+=3){var l=Math.sqrt(N[t]*N[t]+N[t+1]*N[t+1]+N[t+2]*N[t+2])||1;N[t]/=l;N[t+1]/=l;N[t+2]/=l;}
+  var out={p:[],n:[],l:[]};
+  for(t=0;t<tris.length;t+=3){
+    var sv=V[tris[t]]+V[tris[t+1]]+V[tris[t+2]],lay=sv>=0?0:1;
+    for(var m=0;m<3;m++){
+      var q=tris[t+m]*3;
+      out.p.push(P[q],P[q+1],P[q+2]);out.n.push(N[q],N[q+1],N[q+2]);out.l.push(lay);
+    }
+  }
+  var thr=0.8;
+  if(state.nodes&&o.l>0){
+    var Ln=1.3,n=36,S=makeGrid(n,n,n,Ln,Ln,Ln),x,y,z,idx=0,kk;
+    for(kk=0;kk<n;kk++){z=S.oz+kk*S.dz;for(j=0;j<n;j++){y=S.oy+j*S.dy;for(i=0;i<n;i++){x=S.ox+i*S.dx;S.F[idx++]=o.P(x,y,z);}}}
+    gradient(S);
+    isoMesh(S,0,1,2,out,function(cx,cy,cz){return cx*cx+cy*cy+cz*cz<=thr*thr;},true);
+  }
+  scene.fade={a:[0,0,0],b:[0,0,0],r1:thr*0.7,r2:thr};
+  scene.rb=1.2;scene.Lx=1.3;scene.Lz=1.3;scene.mo=null;
+  return out;
+}
+
+/* 電子が見つかる確率(ψ² の合計)の95%を含む等値面のしきい値 */
+function level95(F){
+  var n=F.length,sq=new Float32Array(n),tot=0,i,v;
+  for(i=0;i<n;i++){v=F[i]*F[i];sq[i]=v;tot+=v;}
+  sq.sort();
+  var acc=0,target=0.95*tot;
+  for(i=n-1;i>=0;i--){acc+=sq[i];if(acc>=target)break;}
+  return Math.sqrt(sq[Math.max(i,0)])||1e-9;
+}
+
+var moCache=null;
+function moKey(){var m=state.mo;return [m.id,m.R.toFixed(2)].join('|');}
+function buildMO(full){
+  var m=state.mo,T=MOBYID[m.id],A=ORBBYID[T.A],B=ORBBYID[T.B],R=m.R;
+  var key=moKey(),S;
+  if(!moCache||moCache.key!==key){
+    var ext=Math.max(envExt(A.l,ZETA[A.l],FEXT),envExt(B.l,ZETA[B.l],FEXT));
+    var Lxy=ext*1.1+1.15,Lz=R/2+ext*1.1+1.15;
+    var h=Math.cbrt(8*Lxy*Lxy*Lz/60000);
+    var nxy=Math.max(24,2*Math.ceil(Lxy/h)),nzz=Math.max(24,2*Math.ceil(Lz/h));
+    S=makeGrid(nxy,nxy,nzz,Lxy,Lxy,Lz);
+    var n=S.F.length;S.PA=new Float32Array(n);S.PB=new Float32Array(n);
+    var zA=ZETA[A.l],zB=ZETA[B.l],i,j,k,idx=0,x,y,z,za,zb,sab=0,saa=0,sbb=0;
+    for(k=0;k<nzz;k++){z=S.oz+k*S.dz;za=z+R/2;zb=z-R/2;
+      for(j=0;j<nxy;j++){y=S.oy+j*S.dy;
+        for(i=0;i<nxy;i++){x=S.ox+i*S.dx;
+          var pa=A.P(x,y,za)*Math.exp(-zA*Math.sqrt(x*x+y*y+za*za));
+          var pb=B.P(x,y,zb)*Math.exp(-zB*Math.sqrt(x*x+y*y+zb*zb));
+          S.PA[idx]=pa;S.PB[idx]=pb;sab+=pa*pb;saa+=pa*pa;sbb+=pb*pb;idx++;
+        }}}
+    S.sigma=sab>=0?1:-1;
+    S.overlap=Math.abs(sab)/Math.sqrt(saa*sbb);
+    S.Lxy=Lxy;S.Lz=Lz;S.key=key;S.ext=ext;
+    moCache={key:key,S:S};
+  }
+  S=moCache.S;
+  /* 混ぜ方を反映した ψ */
+  var pA=m.pA,cA=Math.sqrt(pA),cB=Math.sqrt(1-pA),a,b,sg=S.sigma;
+  var nn=S.F.length,q;
+  if(!m.anti){for(q=0;q<nn;q++)S.F[q]=cA*S.PA[q]+sg*cB*S.PB[q];}
+  else{for(q=0;q<nn;q++)S.F[q]=cB*S.PA[q]-sg*cA*S.PB[q];}
+  var lvl=level95(S.F),out={p:[],n:[],l:[]};
+  gradient(S);
+  isoMesh(S,lvl,1,0,out,null,false);
+  isoMesh(S,lvl,-1,1,out,null,false);
+  var ca=m.anti?cB:cA,cb=m.anti?cA:cB;
+  if(state.nodes){
+    var thr=Math.max(S.ext*0.95,R/2*1.25+0.3);
+    isoMesh(S,0,1,2,out,function(cx,cy,cz){
+      var rA=Math.sqrt(cx*cx+cy*cy+(cz+R/2)*(cz+R/2)),rB=Math.sqrt(cx*cx+cy*cy+(cz-R/2)*(cz-R/2));
+      return Math.min(rA,rB)<=thr;
+    },true);
+    scene.fade={a:[0,0,-R/2],b:[0,0,R/2],r1:thr*0.75,r2:thr};
+  }
+  scene.rb=S.Lz*0.96;scene.Lx=S.Lxy;scene.Lz=S.Lz;
+  scene.mo={R:R,overlap:S.overlap,sigma:sg};
+  return out;
+}
+
+/* ================= WebGL ================= */
+var glc=$('gl'),ovc=$('ov'),ovx=ovc.getContext('2d'),gl=null,prog=null,ext32=null;
+var buf={};
+var loc={};
+var VS='attribute vec3 aP;attribute vec3 aN;attribute float aL;'+
+'uniform vec3 uR0;uniform vec3 uR1;uniform vec3 uR2;uniform vec2 uK;'+
+'uniform vec4 uC0;uniform vec4 uC1;uniform vec4 uC2;uniform vec4 uC3;'+
+'uniform vec3 uNA;uniform vec3 uNB;uniform vec2 uFd;varying vec4 vC;varying vec3 vP;varying float vN;'+
+'void main(){vec3 v=vec3(dot(uR0,aP),dot(uR1,aP),dot(uR2,aP));'+
+'vec3 n=vec3(dot(uR0,aN),dot(uR1,aN),dot(uR2,aN));'+
+'vec4 c=aL<0.5?uC0:(aL<1.5?uC1:(aL<2.5?uC2:uC3));'+
+'float b=0.52+0.48*abs(dot(normalize(n),normalize(vec3(-0.35,0.6,-0.7))));'+
+'float al=c.a;'+
+'if(aL>1.5&&aL<2.5){float dd=min(distance(aP,uNA),distance(aP,uNB));al*=1.0-smoothstep(uFd.x,uFd.y,dd);}'+
+'vP=aP;vN=(aL>1.5&&aL<2.5)?1.0:0.0;vC=vec4(c.rgb*b,al);gl_Position=vec4(v.x*uK.x,v.y*uK.y,0.0,1.0);}';
+var FS='precision mediump float;varying vec4 vC;varying vec3 vP;varying float vN;'+
+'void main(){vec4 c=vC;if(vN>0.5){vec3 f=abs(fract(vP*7.0)-0.5);float m=max(f.x,max(f.y,f.z));'+
+'float g=1.0-min(min(abs(fract(vP.x*7.0)-0.5),abs(fract(vP.y*7.0)-0.5)),abs(fract(vP.z*7.0)-0.5))*0.0;'+
+'vec3 q=abs(fract(vP*7.0)-0.5);float ln=min(q.x,min(q.y,q.z));float e=smoothstep(0.455,0.48,0.5-ln);'+
+'c.a*=0.1+0.9*e;c.rgb*=0.8;if(c.a<0.03)discard;}gl_FragColor=c;}';
+function sh(type,src){var s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;}
+function initGL(){
+  try{
+    gl=glc.getContext('webgl',{alpha:false,antialias:true})||glc.getContext('experimental-webgl',{alpha:false,antialias:true});
+    if(!gl)throw new Error('no webgl');
+    ext32=gl.getExtension('OES_element_index_uint');
+    if(!ext32)throw new Error('no uint index');
+    prog=gl.createProgram();
+    gl.attachShader(prog,sh(gl.VERTEX_SHADER,VS));gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FS));
+    gl.linkProgram(prog);
+    if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(prog));
+    gl.useProgram(prog);
+    ['aP','aN','aL'].forEach(function(n){loc[n]=gl.getAttribLocation(prog,n);});
+    ['uR0','uR1','uR2','uK','uC0','uC1','uC2','uC3','uNA','uNB','uFd'].forEach(function(n){loc[n]=gl.getUniformLocation(prog,n);});
+    buf.p=gl.createBuffer();buf.n=gl.createBuffer();buf.l=gl.createBuffer();buf.i=gl.createBuffer();
+    gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.disable(gl.DEPTH_TEST);
+    return true;
+  }catch(e){
+    gl=null;$('nogl').hidden=false;return false;
+  }
+}
+function upload(out){
+  var T=out.l.length/3;
+  scene.T=T;
+  var P=new Float32Array(out.p),N=new Float32Array(out.n),Lr=new Float32Array(out.l);
+  scene.cen=new Float32Array(T*3);
+  for(var t=0;t<T;t++){
+    var b=t*9;
+    scene.cen[t*3]=(P[b]+P[b+3]+P[b+6])/3;scene.cen[t*3+1]=(P[b+1]+P[b+4]+P[b+7])/3;scene.cen[t*3+2]=(P[b+2]+P[b+5]+P[b+8])/3;
+  }
+  scene.keys=new Int32Array(T);scene.order=new Int32Array(T);scene.idx=new Uint32Array(3*T);
+  if(!gl)return;
+  gl.bindBuffer(gl.ARRAY_BUFFER,buf.p);gl.bufferData(gl.ARRAY_BUFFER,P,gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER,buf.n);gl.bufferData(gl.ARRAY_BUFFER,N,gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER,buf.l);gl.bufferData(gl.ARRAY_BUFFER,Lr,gl.STATIC_DRAW);
+}
+
+/* ================= テーマ色・投影 ================= */
+var th=null;
+function hexToRgb(s){s=s.trim().replace('#','');if(s.length===3)s=s.split('').map(function(c){return c+c;}).join('');
+  return [parseInt(s.slice(0,2),16)/255,parseInt(s.slice(2,4),16)/255,parseInt(s.slice(4,6),16)/255];}
+function readTheme(){
+  var cs=getComputedStyle(document.documentElement);
+  function g(n){return cs.getPropertyValue(n).trim();}
+  th={plot:g('--plot'),ink:g('--ink'),muted:g('--muted'),rule:g('--rule'),panel:g('--panel'),soft:g('--soft'),
+      pos:g('--pos'),neg:g('--neg'),node:g('--node'),
+      plotRGB:hexToRgb(g('--plot')),posRGB:hexToRgb(g('--pos')),negRGB:hexToRgb(g('--neg')),nodeRGB:hexToRgb(g('--node')),auxRGB:hexToRgb(g('--aux'))};
+}
+var view={w:1,h:1,ppu:1,R:null};
+function viewMatrix(){
+  var c=Math.cos(state.az),s=Math.sin(state.az),ce=Math.cos(state.el),se=Math.sin(state.el);
+  return [[c,-s,0],[s*se,c*se,ce],[s*ce,c*ce,-se]];
+}
+function proj(R,x,y,z){
+  return [view.w/2+(R[0][0]*x+R[0][1]*y+R[0][2]*z)*view.ppu,view.h/2-(R[1][0]*x+R[1][1]*y+R[1][2]*z)*view.ppu];
+}
+function sizeCanvas(c){
+  var dpr=Math.min(2,window.devicePixelRatio||1),w=c.clientWidth,h=c.clientHeight;
+  var bw=Math.round(w*dpr),bh=Math.round(h*dpr);
+  if(c.width!==bw||c.height!==bh){c.width=bw;c.height=bh;}
+  return dpr;
+}
+
+/* ================= 描画 ================= */
+function sortTris(R){
+  var T=scene.T;if(!T)return;
+  var B=1024,dr=scene.rb*1.9,sc=(B-1)/(2*dr),cen=scene.cen,keys=scene.keys,counts=new Int32Array(B+1),t,k;
+  var r0=R[2][0],r1=R[2][1],r2=R[2][2];
+  for(t=0;t<T;t++){
+    k=((r0*cen[t*3]+r1*cen[t*3+1]+r2*cen[t*3+2]+dr)*sc)|0;
+    if(k<0)k=0;else if(k>B-1)k=B-1;
+    keys[t]=k;counts[k]++;
+  }
+  /* 奥(d が大きい)から手前の順 */
+  var start=new Int32Array(B+1),acc=0;
+  for(k=B-1;k>=0;k--){start[k]=acc;acc+=counts[k];}
+  var order=scene.order,idx=scene.idx;
+  for(t=0;t<T;t++){order[start[keys[t]]++]=t;}
+  for(var p=0;p<T;p++){var tt=order[p]*3;idx[p*3]=tt;idx[p*3+1]=tt+1;idx[p*3+2]=tt+2;}
+}
+function render(){
+  readTheme();
+  var dpr=sizeCanvas(glc);sizeCanvas(ovc);
+  var w=glc.clientWidth,h=glc.clientHeight;
+  if(w<10||h<10)return;
+  view.w=w;view.h=h;view.ppu=Math.min(w,h)*0.47*state.zoom/scene.rb;
+  var R=viewMatrix();
+  if(gl){
+    gl.viewport(0,0,glc.width,glc.height);
+    gl.clearColor(th.plotRGB[0],th.plotRGB[1],th.plotRGB[2],1);gl.clear(gl.COLOR_BUFFER_BIT);
+    if(scene.T){
+      sortTris(R);
+      gl.useProgram(prog);
+      gl.uniform3f(loc.uR0,R[0][0],R[0][1],R[0][2]);gl.uniform3f(loc.uR1,R[1][0],R[1][1],R[1][2]);gl.uniform3f(loc.uR2,R[2][0],R[2][1],R[2][2]);
+      gl.uniform2f(loc.uK,view.ppu/(w/2),view.ppu/(h/2));
+      gl.uniform4f(loc.uC0,th.posRGB[0],th.posRGB[1],th.posRGB[2],0.5);
+      gl.uniform4f(loc.uC1,th.negRGB[0],th.negRGB[1],th.negRGB[2],0.5);
+      var fd=scene.fade||{a:[0,0,0],b:[0,0,0],r1:1,r2:2};
+      gl.uniform3f(loc.uNA,fd.a[0],fd.a[1],fd.a[2]);gl.uniform3f(loc.uNB,fd.b[0],fd.b[1],fd.b[2]);gl.uniform2f(loc.uFd,fd.r1,fd.r2);
+      gl.uniform4f(loc.uC2,th.nodeRGB[0],th.nodeRGB[1],th.nodeRGB[2],0.34);
+      gl.uniform4f(loc.uC3,th.auxRGB[0],th.auxRGB[1],th.auxRGB[2],0.16);
+      gl.bindBuffer(gl.ARRAY_BUFFER,buf.p);gl.enableVertexAttribArray(loc.aP);gl.vertexAttribPointer(loc.aP,3,gl.FLOAT,false,0,0);
+      gl.bindBuffer(gl.ARRAY_BUFFER,buf.n);gl.enableVertexAttribArray(loc.aN);gl.vertexAttribPointer(loc.aN,3,gl.FLOAT,false,0,0);
+      gl.bindBuffer(gl.ARRAY_BUFFER,buf.l);gl.enableVertexAttribArray(loc.aL);gl.vertexAttribPointer(loc.aL,1,gl.FLOAT,false,0,0);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,buf.i);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,scene.idx,gl.DYNAMIC_DRAW);
+      gl.drawElements(gl.TRIANGLES,scene.T*3,gl.UNSIGNED_INT,0);
+    }
+  }
+  drawOverlay(R,dpr);
+}
+function arrowLine(c,p,q,col,dash){
+  c.strokeStyle=col;c.fillStyle=col;c.lineWidth=1.2;c.setLineDash(dash||[]);
+  c.beginPath();c.moveTo(p[0],p[1]);c.lineTo(q[0],q[1]);c.stroke();c.setLineDash([]);
+  var a=Math.atan2(q[1]-p[1],q[0]-p[0]);
+  c.beginPath();c.moveTo(q[0],q[1]);c.lineTo(q[0]-7*Math.cos(a-0.4),q[1]-7*Math.sin(a-0.4));c.lineTo(q[0]-7*Math.cos(a+0.4),q[1]-7*Math.sin(a+0.4));c.closePath();c.fill();
+}
+function drawOverlay(R,dpr){
+  var c=ovx;c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,view.w,view.h);
+  c.font='600 12px '+getComputedStyle(document.body).fontFamily;c.textBaseline='middle';c.textAlign='center';
+  var axL=scene.Lx*0.8,azL=(state.tab==='mo'?scene.Lz*0.92:scene.Lz*0.8);
+  var o=proj(R,0,0,0);
+  var ac=th.muted.length?th.muted:'#888';
+  var ends=[['x',axL,0,0],['y',0,axL,0],['z',0,0,azL]];
+  ends.forEach(function(e){
+    var q=proj(R,e[1],e[2],e[3]);
+    var from=state.tab==='mo'&&e[0]==='z'?proj(R,0,0,-azL):o;
+    arrowLine(c,from,q,ac,e[0]==='z'&&state.tab==='mo'?[5,4]:null);
+    var dx=q[0]-o[0],dy=q[1]-o[1],l=Math.sqrt(dx*dx+dy*dy)||1;
+    c.fillStyle=th.ink;
+    c.save();c.lineWidth=3;c.strokeStyle=th.plot;c.strokeText(e[0],q[0]+dx/l*10,q[1]+dy/l*10);c.restore();
+    c.fillText(e[0],q[0]+dx/l*10,q[1]+dy/l*10);
+  });
+  /* 原子核 */
+  var nuc=state.tab==='mo'?[[0,0,-state.mo.R/2,'A'],[0,0,state.mo.R/2,'B']]:[[0,0,0,'']];
+  nuc.forEach(function(n){
+    var q=proj(R,n[0],n[1],n[2]);
+    c.beginPath();c.arc(q[0],q[1],4.5,0,6.2832);c.fillStyle=th.ink;c.fill();c.lineWidth=2;c.strokeStyle=th.plot;c.stroke();
+    if(n[3]){c.fillStyle=th.ink;c.save();c.lineWidth=3;c.strokeStyle=th.plot;c.strokeText(n[3],q[0]+13,q[1]-11);c.restore();c.fillText(n[3],q[0]+13,q[1]-11);}
+  });
+}
+
+/* ================= エネルギー準位の模式図 ================= */
+var enc=$('en');
+function drawEnergy(){
+  if(state.tab!=='mo'||!scene.mo)return;
+  var dpr=sizeCanvas(enc),c=enc.getContext('2d'),w=enc.clientWidth,h=enc.clientHeight;
+  if(w<10||h<10)return;
+  c.setTransform(dpr,0,0,dpr,0,0);c.fillStyle=th.plot;c.fillRect(0,0,w,h);
+  var S=clamp(scene.mo.overlap,0,0.88),mid=h*0.5,unit=h*0.3;
+  var db=S/(1+S),da=S/(1-S);
+  var xa0=w*0.08,xa1=w*0.26,xb0=w*0.74,xb1=w*0.92,xm0=w*0.38,xm1=w*0.62;
+  var yb=mid+db*unit*1.05,ya=mid-da*unit*1.05;
+  var sel=state.mo.anti?'a':'b';
+  function lvl(x0,x1,y,col,wd){c.strokeStyle=col;c.lineWidth=wd;c.lineCap='round';c.beginPath();c.moveTo(x0,y);c.lineTo(x1,y);c.stroke();}
+  function dash(xa,ya_,xb,yb_,col){c.setLineDash([4,4]);c.strokeStyle=col;c.lineWidth=1;c.beginPath();c.moveTo(xa,ya_);c.lineTo(xb,yb_);c.stroke();c.setLineDash([]);}
+  dash(xa1,mid,xm0,yb,th.rule);dash(xa1,mid,xm0,ya,th.rule);dash(xb0,mid,xm1,yb,th.rule);dash(xb0,mid,xm1,ya,th.rule);
+  lvl(xa0,xa1,mid,th.muted,2.5);lvl(xb0,xb1,mid,th.muted,2.5);
+  lvl(xm0,xm1,yb,sel==='b'?th.ink:th.rule,sel==='b'?4:2.5);
+  lvl(xm0,xm1,ya,sel==='a'?th.ink:th.rule,sel==='a'?4:2.5);
+  c.font='600 12px '+getComputedStyle(document.body).fontFamily;c.textAlign='center';c.textBaseline='alphabetic';
+  c.fillStyle=th.muted;c.fillText('A',(xa0+xa1)/2,mid+20);c.fillText('B',(xb0+xb1)/2,mid+20);
+  c.fillStyle=sel==='b'?th.ink:th.muted;c.fillText('結合性',(xm0+xm1)/2,yb+19);
+  c.fillStyle=sel==='a'?th.ink:th.muted;c.fillText('反結合性',(xm0+xm1)/2,ya-9);
+  c.strokeStyle=th.muted;c.fillStyle=th.muted;c.lineWidth=1.3;
+  c.beginPath();c.moveTo(14,h-14);c.lineTo(14,16);c.stroke();
+  c.beginPath();c.moveTo(14,9);c.lineTo(10.5,16);c.lineTo(17.5,16);c.closePath();c.fill();
+  c.fillStyle=th.ink;c.textAlign='left';c.fillText('E',22,16);
+  $('sFill').style.width=(S/0.88*100).toFixed(0)+'%';
+  $('sNum').textContent='S = '+scene.mo.overlap.toFixed(2);
+}
+
+/* ================= 画面の更新 ================= */
+var raf=0,needBuild=false,needDraw=false;
+function schedule(build){
+  if(build)needBuild=true;needDraw=true;
+  if(raf)return;
+  raf=requestAnimationFrame(function(){
+    raf=0;
+    if(needBuild){
+      var t0=performance.now();
+      var out=state.tab==='ao'?buildAOShape():buildMO();
+      upload(out);
+      stats.ms=performance.now()-t0;stats.tri=scene.T;window.__orb=stats;
+      updateInfo();
+    }
+    if(needDraw){render();drawEnergy();}
+    needBuild=false;needDraw=false;
+  });
+}
+function plain(h){return h.replace(/<[^>]+>/g,'');}
+function updateInfo(){
+  var facts=$('iFacts');
+  if(state.tab==='ao'){
+    var o=ORBBYID[state.orb];
+    $('iName').innerHTML=o.h+' 軌道';
+    $('iSub').textContent=LNAME[o.l]+' 軌道 / 方位量子数 l = '+o.l;
+    facts.innerHTML='<dt>角度部分</dt><dd>'+o.ang+'</dd><dt>節面の数</dt><dd>'+o.l+(o.l?'(':'')+(o.l?o.planes+')':'')+'</dd>';
+    $('iDesc').textContent=o.d;
+  }else{
+    var T=MOBYID[state.mo.id],m=state.mo,kind=T.kind+(m.anti?'*':'');
+    $('iName').innerHTML=kind+' '+(m.anti?'反結合性軌道':'結合性軌道');
+    $('iSub').innerHTML=T.h+'(LCAO)';
+    var pa=(m.anti?1-m.pA:m.pA)*100;
+    facts.innerHTML='<dt>結合軸を含む節面</dt><dd>'+T.axisText+'</dd>'+
+      '<dt>核間の節面</dt><dd>'+(m.anti?'あり(結合軸に垂直に1枚)':'なし')+'</dd>'+
+      '<dt>原子軌道の寄与</dt><dd>A '+pa.toFixed(0)+'% : B '+(100-pa).toFixed(0)+'%</dd>';
+    $('iDesc').textContent=KINDDESC[T.kind]+' '+(m.anti
+      ?'反結合性軌道では、2つの原子軌道が逆の位相で重なり、核間の電子が減ります。エネルギーは原子軌道より高くなります。'
+      :'結合性軌道では、2つの原子軌道が同じ位相で重なり、電子が核間に集まります。エネルギーは原子軌道より低くなります。');
+    $('oR').textContent=m.R.toFixed(1);
+    $('oMix').textContent=(m.pA*100).toFixed(0)+' %(結合性軌道での値)';
+  }
+}
+function applyMode(){
+  var ao=state.tab==='ao';
+  $('ruleTxt').textContent=ao
+    ?'方向ごとの ψ の大きさ(角度部分)を、原点からの距離にして描いた形です。'
+    :'電子が見つかる確率の95%を含む、ψ が一定の面を描いています。';
+  setNote();
+}
+function setNote(){
+  $('modelNote').textContent=state.tab==='ao'
+   ?'各軌道は、1s・2p・3d・4f 軌道を例にした形です。教科書でよく見る形で、方向ごとの ψ の大きさ(角度部分)を、原点からの距離として描いています。くびれの強さは見やすさのための調整で、実際の電子の分布そのものではありません。大きさは各軌道で揃えてあります。'
+   :'表示している面は、電子が見つかる確率の95%を含む等値面です。2つの原子軌道は同じ形の簡単な関数(ψ = (角度部分)× exp(−ζr))で、距離を変えると重なりが変わります。エネルギー準位は重なりから決めた模式図で、実際の値ではありません。δ 結合は参考として入れています。';
+}
+
+/* ---------- UI の組み立て ---------- */
+function buildOrbChips(){
+  var box=$('orbChips');box.innerHTML='';
+  ORBS[state.l].forEach(function(o){
+    var b=document.createElement('button');b.type='button';b.setAttribute('data-o',o.id);
+    b.setAttribute('aria-label',plain(o.h)+' 軌道');b.innerHTML=o.h;
+    b.setAttribute('aria-pressed',o.id===state.orb?'true':'false');box.appendChild(b);
+  });
+}
+function buildMoChips(){
+  var box=$('moChips');box.innerHTML='';
+  MOS.forEach(function(t){
+    var b=document.createElement('button');b.type='button';b.setAttribute('data-m',t.id);
+    b.setAttribute('aria-label',plain(t.h)+' '+t.kind+' 軌道');
+    b.innerHTML=t.h+'<span class="tag">'+t.kind+'</span>';
+    b.setAttribute('aria-pressed',t.id===state.mo.id?'true':'false');box.appendChild(b);
+  });
+}
+function pressed(sel,test){
+  var bs=document.querySelectorAll(sel);
+  for(var i=0;i<bs.length;i++)bs[i].setAttribute('aria-pressed',test(bs[i])?'true':'false');
+}
+function setTab(t){
+  state.tab=t;
+  pressed('#tabSeg button',function(b){return b.getAttribute('data-t')===t;});
+  $('panelAO').hidden=t!=='ao';$('panelMO').hidden=t!=='mo';$('panelEn').hidden=t!=='mo';
+  $('legNode').textContent='灰色の面 = 節面';
+  applyMode();schedule(true);
+}
+
+/* ---------- 入力 ---------- */
+$('tabSeg').addEventListener('click',function(e){var b=e.target.closest('button');if(b)setTab(b.getAttribute('data-t'));});
+$('lSeg').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;
+  state.l=+b.getAttribute('data-l');
+  state.orb=ORBS[state.l][0].id;
+  pressed('#lSeg button',function(x){return +x.getAttribute('data-l')===state.l;});
+  buildOrbChips();schedule(true);
+});
+$('orbChips').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;
+  state.orb=b.getAttribute('data-o');
+  pressed('#orbChips button',function(x){return x.getAttribute('data-o')===state.orb;});
+  schedule(true);
+});
+$('moChips').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;
+  state.mo.id=b.getAttribute('data-m');
+  var T=MOBYID[state.mo.id];state.mo.R=T.R0;$('rR').value=T.R0;
+  pressed('#moChips button',function(x){return x.getAttribute('data-m')===state.mo.id;});
+  schedule(true);
+});
+$('antiSeg').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;
+  state.mo.anti=b.getAttribute('data-a')==='1';
+  pressed('#antiSeg button',function(x){return (x.getAttribute('data-a')==='1')===state.mo.anti;});
+  schedule(true);
+});
+$('rR').addEventListener('input',function(){state.mo.R=parseFloat(this.value);schedule(true);});
+$('rMix').addEventListener('input',function(){state.mo.pA=parseFloat(this.value)/100;schedule(true);});
+$('tgNode').addEventListener('click',function(){state.nodes=!state.nodes;this.setAttribute('aria-pressed',state.nodes?'true':'false');schedule(true);});
+$('resetView').addEventListener('click',function(){state.az=AZ0;state.el=EL0;state.zoom=1;schedule(false);});
+
+var ptrs=new Map();
+glc.addEventListener('pointerdown',function(e){try{glc.setPointerCapture(e.pointerId);}catch(_){}ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});});
+glc.addEventListener('pointermove',function(e){
+  var p=ptrs.get(e.pointerId);if(!p)return;
+  var dx=e.clientX-p.x,dy=e.clientY-p.y;
+  if(ptrs.size===1){state.az-=dx*0.008;state.el=clamp(state.el+dy*0.006,-1.5,1.5);}
+  else if(ptrs.size===2){
+    var other=null;ptrs.forEach(function(v,id){if(id!==e.pointerId)other=v;});
+    var d0=Math.hypot(p.x-other.x,p.y-other.y),d1=Math.hypot(e.clientX-other.x,e.clientY-other.y);
+    if(d0>0)state.zoom=clamp(state.zoom*d1/d0,0.5,3);
+  }
+  p.x=e.clientX;p.y=e.clientY;schedule(false);
+});
+function endPtr(e){ptrs.delete(e.pointerId);}
+glc.addEventListener('pointerup',endPtr);glc.addEventListener('pointercancel',endPtr);
+glc.addEventListener('wheel',function(e){e.preventDefault();state.zoom=clamp(state.zoom*Math.exp(-e.deltaY*0.0012),0.5,3);schedule(false);},{passive:false});
+
+if(window.ResizeObserver){var ro=new ResizeObserver(function(){schedule(false);});ro.observe(glc);ro.observe(enc);}
+if(window.matchMedia){var mq=window.matchMedia('(prefers-color-scheme: dark)');if(mq.addEventListener)mq.addEventListener('change',function(){schedule(false);});}
+new MutationObserver(function(){schedule(false);}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+/* ---------- 起動 ---------- */
+initGL();
+buildOrbChips();buildMoChips();
+$('rR').value=state.mo.R;
+applyMode();
+schedule(true);
+window.__orbApi={state:state,setTab:setTab,schedule:schedule,ORBS:ORBS,MOS:MOS};
+})();
+</script>
+
+</body></html>

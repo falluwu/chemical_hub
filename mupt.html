@@ -1,0 +1,637 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light}body{margin:0;font:14px system-ui}</style></head><body><title>μ-P-T 曲面</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: 左に回せる μ-P-T の半透明の立体(スクロール中も固定)、右に同じ大きさの正方形の断面3枚を縦に並べる。スマホは1列。数値の目盛りは出さない。 */
+:root{
+  --bg:#eef1f5; --panel:#ffffff; --ink:#121b27; --muted:#5b6878; --rule:#d3dae3; --soft:#e6eaf0; --plot:#fbfcfe;
+  --s:#3f5bd8; --l:#0c9a82; --g:#dd8216;
+  --font:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo","Noto Sans JP",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e141b; --panel:#151d27; --ink:#e8edf3; --muted:#94a1b2; --rule:#2a3542; --soft:#1f2935; --plot:#101820;
+    --s:#8197ff; --l:#2fd0b0; --g:#ffb04a; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e141b; --panel:#151d27; --ink:#e8edf3; --muted:#94a1b2; --rule:#2a3542; --soft:#1f2935; --plot:#101820;
+  --s:#8197ff; --l:#2fd0b0; --g:#ffb04a; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--ink); font:14px/1.6 var(--font);
+  padding-block:20px 40px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap{max-width:1180px;margin:0 auto}
+header{margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px 24px;align-items:flex-end;justify-content:space-between}
+h1{font-size:22px;line-height:1.3;margin:0 0 4px;letter-spacing:.01em;text-wrap:balance}
+.lede{margin:0;color:var(--muted);max-width:60ch}
+
+.layout{display:flex;flex-direction:column;gap:16px}
+@media (min-width:960px){
+  .layout{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:20px;align-items:start}
+  .stage{position:sticky;top:calc(12px + env(safe-area-inset-top, 0px))}
+}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:14px;min-width:0}
+.label{font-size:12px;color:var(--muted);letter-spacing:.06em;margin:0 0 8px;font-weight:600}
+
+.stage{background:var(--plot);border:1px solid var(--rule);border-radius:8px;overflow:hidden;min-width:0}
+.stage-head{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--rule);background:var(--panel)}
+.chip-s,.chip-l,.chip-g{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600}
+.chip-s::before,.chip-l::before,.chip-g::before{content:"";width:12px;height:12px;border-radius:2px;background:var(--c)}
+.chip-s{--c:var(--s)}.chip-l{--c:var(--l)}.chip-g{--c:var(--g)}
+.stage-head .rule{color:var(--muted);font-size:12px;flex:1 1 200px;min-width:0}
+canvas{display:block;width:100%}
+#c3d{aspect-ratio:4/3;touch-action:none;cursor:grab}
+#c3d:active{cursor:grabbing}
+.stage-foot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 12px;align-items:center;padding:8px 12px;border-top:1px solid var(--rule);background:var(--panel);color:var(--muted);font-size:12px}
+
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.ghost{background:none;border:1px solid var(--rule);border-radius:999px;padding:3px 12px;font-size:12px;color:var(--ink)}
+.ghost:hover{background:var(--soft)}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--rule);border-radius:6px;overflow:hidden;background:var(--soft)}
+.seg button{border:0;background:none;padding:6px 14px;font-size:13px}
+.seg button+button{border-left:1px solid var(--rule)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel);font-weight:600}
+
+.charts{width:100%}
+.grid{display:grid;grid-template-columns:1fr;gap:18px;max-width:560px;margin-inline:auto}
+.grid figure{margin:0;min-width:0}
+figcaption{font-size:13px;margin:0 0 6px;font-weight:600}
+figcaption span{font-weight:400;color:var(--muted);font-size:12px}
+.cv{aspect-ratio:1/1;background:var(--plot);border:1px solid var(--rule);border-radius:6px}
+#cpt{touch-action:none;cursor:crosshair}
+#cmt,#cmp{touch-action:pan-y;cursor:ew-resize}
+
+.notes ul{margin:0 0 12px;padding-left:1.2em}
+.notes li{margin:3px 0}
+.notes p{margin:0;color:var(--muted);font-size:12.5px}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div>
+    <h1>μ-P-T 曲面</h1>
+    <p class="lede">固体・液体・気体の化学ポテンシャルを、温度と圧力の立体として回しながら確かめます。</p>
+  </div>
+  <div class="seg" id="substSeg" role="group" aria-label="物質">
+    <button type="button" data-s="water" aria-pressed="true">水</button>
+    <button type="button" data-s="other" aria-pressed="false">ふつうの物質</button>
+  </div>
+</header>
+
+<div class="layout">
+  <section class="stage" aria-label="μ-P-T の立体">
+    <div class="stage-head">
+      <span class="chip-s">固体</span><span class="chip-l">液体</span><span class="chip-g">気体</span>
+      <span class="rule">上面は3つの相のうち μ が最も低いところ。色が安定な相、黒線が相境界です。</span>
+    </div>
+    <canvas id="c3d" role="img" aria-label="温度・圧力・化学ポテンシャルを軸にした半透明の立体。上面は最も低い相の化学ポテンシャルで、安定な相ごとに色分けされている"></canvas>
+    <div class="stage-foot"><span>ドラッグで回転 / ピンチ・ホイールで拡大縮小</span><button class="ghost" id="resetView" type="button">視点をもどす</button></div>
+  </section>
+
+  <div class="col">
+    <section class="panel charts" aria-label="相図と断面グラフ">
+      <div class="grid">
+        <figure>
+          <figcaption>P-T 図 <span>(ドラッグで断面の位置を動かす)</span></figcaption>
+          <canvas class="cv" id="cpt" role="img" aria-label="圧力と温度の相図"></canvas>
+        </figure>
+        <figure>
+          <figcaption>断面 μ-T <span>(P 一定)</span></figcaption>
+          <canvas class="cv" id="cmt" role="img" aria-label="圧力一定での化学ポテンシャルの温度変化"></canvas>
+        </figure>
+        <figure>
+          <figcaption>断面 μ-P <span>(T 一定)</span></figcaption>
+          <canvas class="cv" id="cmp" role="img" aria-label="温度一定での化学ポテンシャルの圧力変化"></canvas>
+        </figure>
+      </div>
+    </section>
+
+    <section class="panel notes">
+      <p class="label">読み方</p>
+      <ul>
+        <li>立体の上面の高さは、3つの相の μ のうち最も低い値です。その色が、そこで安定な相です。</li>
+        <li>黒い稜線が相境界(2つの相の μ が等しい線)で、3本が集まる点が三重点です。</li>
+        <li>μ-T は圧力一定、μ-P は温度一定の切り口です。太い線がその条件で安定な相、細い線は不安定な相の μ を延長したものです。</li>
+        <li>T 方向の傾きが −S、P 方向の傾きが V です。気体は S も V も大きいので、どちらの断面でも気体の線が最も急に傾きます。</li>
+      </ul>
+      <p id="modelNote"></p>
+    </section>
+  </div>
+</div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- 模式モデル ----------
+   実在の数値ではなく、形が見やすいように決めた無次元の値。三重点を (T, P) = (1, 1)、μ = 0 に置く。
+   μ(固) = −Ss (T−1) + vs (P−1),  μ(液) = −Sl (T−1) + vl (P−1),  μ(気) = −Sg (T−1) + T ln P  */
+var M={Ss:1,Sl:1.8,Sg:5,vl:0.12,vs:0.2};
+function muS(T,P){return -M.Ss*(T-1)+M.vs*(P-1);}
+function muL(T,P){return -M.Sl*(T-1)+M.vl*(P-1);}
+function muG(T,P){return -M.Sg*(T-1)+T*Math.log(P);}
+function musAt(T,P){return [muS(T,P),muL(T,P),muG(T,P)];}
+function argmin3(a){return a[0]<=a[1]&&a[0]<=a[2]?0:(a[1]<=a[2]?1:2);}
+var NAMES=['固体','液体','気体'];
+
+var SUBST={
+  water:{vs:0.2,def:{T:0.9,P:2.5},
+    note:'実際の数値ではなく、形が見やすいように作った模式図です。目盛りの数値は出していません。各相の S と V は一定、気体は理想気体として、μ を温度と圧力の簡単な式で表しています。氷は液体の水より体積が大きいので、固体と液体の境界(融解曲線)は圧力が高いほど低温側に傾きます。'},
+  other:{vs:0.08,def:{T:1.1,P:2.5},
+    note:'実際の数値ではなく、形が見やすいように作った模式図です。目盛りの数値は出していません。各相の S と V は一定、気体は理想気体として、μ を温度と圧力の簡単な式で表しています。ふつうの物質では固体が液体より密なので、融解曲線は圧力が高いほど高温側に傾きます。'}
+};
+var NOTE_TAIL=' 立体の下側は固体・液体が見やすい高さで切ってあり、それより μ が低い気体の領域は底の高さで平らに描いています。';
+
+function bis(f,a,b){
+  var fa=f(a),fb=f(b);
+  if(!(fa*fb<=0))return NaN;
+  for(var i=0;i<70;i++){var m=0.5*(a+b),fm=f(m);if(fa*fm<=0){b=m;fb=fm;}else{a=m;fa=fm;}}
+  return 0.5*(a+b);
+}
+function Tsl(P){return 1+(M.vl-M.vs)/(M.Sl-M.Ss)*(P-1);}
+function Tlg(P){return bis(function(T){return muG(T,P)-muL(T,P);},0.05,30);}
+function Tsg(P){return bis(function(T){return muG(T,P)-muS(T,P);},0.05,30);}
+
+/* ---------- 状態 ---------- */
+var view={T0:0.4,T1:1.8,P0:0.08,P1:4};
+var state={T:0.9,P:2.5,az:-0.62,el:0.5,zoom:1};
+var AZ0=-0.62,EL0=0.5;
+
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+
+/* ---------- テーマ色 ---------- */
+var th=null;
+function hex(s){
+  s=s.replace('#','');
+  if(s.length===3)s=s.split('').map(function(c){return c+c;}).join('');
+  return [parseInt(s.slice(0,2),16),parseInt(s.slice(2,4),16),parseInt(s.slice(4,6),16)];
+}
+function readTheme(){
+  var cs=getComputedStyle(document.documentElement);
+  function g(n){return cs.getPropertyValue(n).trim();}
+  th={plot:g('--plot'),ink:g('--ink'),muted:g('--muted'),rule:g('--rule'),panel:g('--panel'),
+      plotRGB:hex(g('--plot')),inkRGB:hex(g('--ink')),
+      col:[hex(g('--s')),hex(g('--l')),hex(g('--g'))],
+      colStr:[g('--s'),g('--l'),g('--g')]};
+}
+function rgba(c,b,a){
+  return 'rgba('+Math.min(255,(c[0]*b)|0)+','+Math.min(255,(c[1]*b)|0)+','+Math.min(255,(c[2]*b)|0)+','+a+')';
+}
+var FONT='system-ui,"Hiragino Sans","Yu Gothic UI","Noto Sans JP",sans-serif';
+
+/* ---------- 相境界・メッシュ ---------- */
+var bnd=null, mesh=null;
+var N=61;
+function buildBoundaries(){
+  var n=240,Ps=[],k;
+  for(k=0;k<=n;k++)Ps.push(view.P0+(view.P1-view.P0)*k/n);
+  Ps.push(1);Ps.sort(function(a,b){return a-b;});
+  var sl=[],lg=[],sg=[];
+  for(var i=0;i<Ps.length;i++){
+    var P=Ps[i],T;
+    if(P>=1-1e-9){
+      T=Tsl(P);sl.push({T:T,P:P,z:muS(T,P)});
+      T=Tlg(P);if(T===T)lg.push({T:T,P:P,z:muL(T,P)});
+    }
+    if(P<=1+1e-9){T=Tsg(P);if(T===T)sg.push({T:T,P:P,z:muS(T,P)});}
+  }
+  bnd={sl:sl,lg:lg,sg:sg};
+}
+function buildMesh(){
+  var E=new Float32Array(N*N),ST=new Uint8Array((N-1)*(N-1)),i,j,m,emax=-1e9;
+  for(i=0;i<N;i++){
+    var T=view.T0+(view.T1-view.T0)*i/(N-1);
+    for(j=0;j<N;j++){
+      var P=view.P0+(view.P1-view.P0)*j/(N-1);
+      m=musAt(T,P);
+      var e=Math.min(m[0],m[1],m[2]);
+      E[i*N+j]=e;if(e>emax)emax=e;
+    }
+  }
+  for(i=0;i<N-1;i++){
+    var Tc=view.T0+(view.T1-view.T0)*(i+0.5)/(N-1);
+    for(j=0;j<N-1;j++){
+      var Pc=view.P0+(view.P1-view.P0)*(j+0.5)/(N-1);
+      ST[i*(N-1)+j]=argmin3(musAt(Tc,Pc));
+    }
+  }
+  /* 底の高さは、固体と液体の μ が全域で収まる範囲から決める */
+  var lo=1e9,hi=-1e9,a,b;
+  for(a=0;a<=40;a++){
+    for(b=0;b<=40;b++){
+      var TT=view.T0+(view.T1-view.T0)*a/40,PP=view.P0+(view.P1-view.P0)*b/40;
+      var s1=muS(TT,PP),l1=muL(TT,PP);
+      lo=Math.min(lo,s1,l1);hi=Math.max(hi,s1,l1);
+    }
+  }
+  var floor=lo-0.5*(hi-lo);
+  mesh={E:E,ST:ST,zf:floor,zt:emax+0.06*(emax-floor)};
+}
+
+/* ---------- キャンバス ---------- */
+function setup(c){
+  var dpr=Math.min(2,window.devicePixelRatio||1),w=c.clientWidth,h=c.clientHeight;
+  var bw=Math.round(w*dpr),bh=Math.round(h*dpr);
+  if(c.width!==bw||c.height!==bh){c.width=bw;c.height=bh;}
+  var ctx=c.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx:ctx,w:w,h:h};
+}
+function haloText(ctx,t,x,y,align){
+  ctx.textAlign=align||'left';
+  ctx.lineWidth=3;ctx.strokeStyle=rgba(th.plotRGB,1,0.9);ctx.strokeText(t,x,y);
+  ctx.fillStyle=th.ink;ctx.fillText(t,x,y);
+}
+
+/* ---------- 3D(半透明の立体) ---------- */
+var c3=document.getElementById('c3d');
+var ZS=0.8;
+var FA=0.3;
+function draw3D(){
+  var s=setup(c3),ctx=s.ctx,w=s.w,h=s.h;
+  if(w<10||h<10)return;
+  ctx.fillStyle=th.plot;ctx.fillRect(0,0,w,h);
+  var zf=mesh.zf,zt=mesh.zt,zc=(zf+zt)/2,zw=(zt-zf)/2;
+  var sc=Math.min(h*0.29,w*0.21)*state.zoom,cx=w*0.5,cy=h*0.52;
+  var ca=Math.cos(state.az),sa=Math.sin(state.az),ce=Math.cos(state.el),se=Math.sin(state.el);
+  function pj(x,y,z){
+    z*=ZS;
+    var X=ca*x-sa*y,Y=sa*x+ca*y;
+    return [cx+X*sc,cy-(Y*se+z*ce)*sc,Y*ce-z*se];
+  }
+  function nx(T){return 2*(T-view.T0)/(view.T1-view.T0)-1;}
+  function ny(P){return 2*(P-view.P0)/(view.P1-view.P0)-1;}
+  function nz(m){return Math.max(-1,(m-zc)/zw);}
+
+  var E=mesh.E,ST=mesh.ST,i,j,k;
+  var XS=[],YS=[];
+  for(i=0;i<N;i++){XS.push(-1+2*i/(N-1));YS.push(-1+2*i/(N-1));}
+  var Lx=-0.45,Ly=-0.55,Lz=0.7,Ln=Math.sqrt(Lx*Lx+Ly*Ly+Lz*Lz);Lx/=Ln;Ly/=Ln;Lz/=Ln;
+  function shade(a,b,c){
+    var rx=ca*a-sa*b,ry=sa*a+ca*b,rz=c,rl=Math.sqrt(rx*rx+ry*ry+rz*rz)||1;
+    return 0.58+0.5*Math.abs((rx*Lx+ry*Ly+rz*Lz)/rl);
+  }
+
+  var top=[];
+  /* 上面 */
+  for(i=0;i<N-1;i++){
+    for(j=0;j<N-1;j++){
+      var z00=nz(E[i*N+j]),z10=nz(E[(i+1)*N+j]),z11=nz(E[(i+1)*N+j+1]),z01=nz(E[i*N+j+1]);
+      var a=pj(XS[i],YS[j],z00),b=pj(XS[i+1],YS[j],z10),c=pj(XS[i+1],YS[j+1],z11),d=pj(XS[i],YS[j+1],z01);
+      var dx=XS[i+1]-XS[i],dy=YS[j+1]-YS[j];
+      var br=shade(-(z10-z00)*ZS*dy,-dx*(z01-z00)*ZS,dx*dy);
+      var col=th.col[ST[i*(N-1)+j]];
+      top.push({t:0,d:(a[2]+b[2]+c[2]+d[2])/4,p:[a[0],a[1],b[0],b[1],c[0],c[1],d[0],d[1]],f:rgba(col,br,FA)});
+    }
+  }
+  /* 上面のメッシュ線 */
+  var STEP=3,seg0,seg1,gcol;
+  for(i=0;i<N;i+=STEP){
+    for(j=0;j<N-1;j++){
+      seg0=pj(XS[i],YS[j],nz(E[i*N+j]));seg1=pj(XS[i],YS[j+1],nz(E[i*N+j+1]));
+      gcol=th.col[ST[Math.min(i,N-2)*(N-1)+j]];
+      top.push({t:1,d:(seg0[2]+seg1[2])/2-0.02,x1:seg0[0],y1:seg0[1],x2:seg1[0],y2:seg1[1],c:rgba(gcol,0.8,0.9),w:0.9});
+    }
+  }
+  for(j=0;j<N;j+=STEP){
+    for(i=0;i<N-1;i++){
+      seg0=pj(XS[i],YS[j],nz(E[i*N+j]));seg1=pj(XS[i+1],YS[j],nz(E[(i+1)*N+j]));
+      gcol=th.col[ST[i*(N-1)+Math.min(j,N-2)]];
+      top.push({t:1,d:(seg0[2]+seg1[2])/2-0.02,x1:seg0[0],y1:seg0[1],x2:seg1[0],y2:seg1[1],c:rgba(gcol,0.8,0.9),w:0.9});
+    }
+  }
+  /* 稜線(相境界) */
+  function pushPolyline(arr){
+    for(k=0;k<arr.length-1;k++){
+      var A=arr[k],B=arr[k+1];
+      if(A.T<view.T0||A.T>view.T1||B.T<view.T0||B.T>view.T1)continue;
+      var q1=pj(nx(A.T),ny(A.P),nz(A.z)),q2=pj(nx(B.T),ny(B.P),nz(B.z));
+      top.push({t:1,d:(q1[2]+q2[2])/2-0.07,x1:q1[0],y1:q1[1],x2:q2[0],y2:q2[1],c:th.ink,w:2.2});
+    }
+  }
+  pushPolyline(bnd.sl);pushPolyline(bnd.lg);pushPolyline(bnd.sg);
+  /* 断面の位置(P一定・T一定の切り口) */
+  function section(fixedT){
+    var n=90,prev=null;
+    for(k=0;k<=n;k++){
+      var T,P;
+      if(fixedT){T=state.T;P=view.P0+(view.P1-view.P0)*k/n;}
+      else{P=state.P;T=view.T0+(view.T1-view.T0)*k/n;}
+      var m=musAt(T,P),cur=pj(nx(T),ny(P),nz(Math.min(m[0],m[1],m[2])));
+      if(prev)top.push({t:1,d:(prev[2]+cur[2])/2-0.05,x1:prev[0],y1:prev[1],x2:cur[0],y2:cur[1],c:rgba(th.inkRGB,1,0.7),w:1.5,dash:[4,3]});
+      prev=cur;
+    }
+  }
+  section(false);section(true);
+  /* 三重点 */
+  var qt=pj(nx(1),ny(1),nz(0));
+  top.push({t:2,d:qt[2]-0.15,x:qt[0],y:qt[1],r:4.5,f:th.panel,s:th.ink,lw:2});
+
+  /* 側面(奥の面も透けて見える)とグリッド線 */
+  var walls=[
+    {nrm:[-1,0],get:function(q){return [-1,YS[q],nz(E[q])];},ph:function(q){return ST[q];}},
+    {nrm:[1,0],get:function(q){return [1,YS[q],nz(E[(N-1)*N+q])];},ph:function(q){return ST[(N-2)*(N-1)+q];}},
+    {nrm:[0,-1],get:function(q){return [XS[q],-1,nz(E[q*N])];},ph:function(q){return ST[q*(N-1)];}},
+    {nrm:[0,1],get:function(q){return [XS[q],1,nz(E[q*N+N-1])];},ph:function(q){return ST[q*(N-1)+N-2];}}
+  ];
+  var wi,lv;
+  for(wi=0;wi<4;wi++){
+    var W=walls[wi],wb=shade(W.nrm[0],W.nrm[1],0)*0.92;
+    for(k=0;k<N-1;k++){
+      var g0=W.get(k),g1=W.get(k+1);
+      var v0=pj(g0[0],g0[1],-1),v1=pj(g1[0],g1[1],-1),v2=pj(g1[0],g1[1],g1[2]),v3=pj(g0[0],g0[1],g0[2]);
+      var wc=th.col[W.ph(k)];
+      top.push({t:0,d:(v0[2]+v1[2]+v2[2]+v3[2])/4,p:[v0[0],v0[1],v1[0],v1[1],v2[0],v2[1],v3[0],v3[1]],f:rgba(wc,wb,FA*0.85)});
+    }
+    for(k=0;k<N;k+=STEP){
+      var gv=W.get(k),a0=pj(gv[0],gv[1],-1),a1=pj(gv[0],gv[1],gv[2]);
+      top.push({t:1,d:(a0[2]+a1[2])/2,x1:a0[0],y1:a0[1],x2:a1[0],y2:a1[1],c:rgba(th.col[W.ph(Math.min(k,N-2))],0.8,0.7),w:0.8});
+    }
+    for(lv=1;lv<=5;lv++){
+      var zl=-1+2*lv/6;
+      for(k=0;k<N-1;k++){
+        var h0=W.get(k),h1=W.get(k+1);
+        if(h0[2]<zl||h1[2]<zl)continue;
+        var l0=pj(h0[0],h0[1],zl),l1=pj(h1[0],h1[1],zl);
+        top.push({t:1,d:(l0[2]+l1[2])/2,x1:l0[0],y1:l0[1],x2:l1[0],y2:l1[1],c:rgba(th.col[W.ph(k)],0.8,0.6),w:0.8});
+      }
+    }
+  }
+  /* 底面 */
+  var fa=pj(-1,-1,-1),fb=pj(1,-1,-1),fc=pj(1,1,-1),fd=pj(-1,1,-1);
+  top.push({t:0,d:100,p:[fa[0],fa[1],fb[0],fb[1],fc[0],fc[1],fd[0],fd[1]],f:rgba(th.inkRGB,1,0.05)});
+
+  top.sort(function(a,b){return b.d-a.d;});
+  ctx.lineJoin='round';ctx.lineCap='round';
+  for(var n=0;n<top.length;n++){
+    var it=top[n];
+    if(it.t===0){
+      var pp=it.p;
+      ctx.beginPath();ctx.moveTo(pp[0],pp[1]);
+      for(var q=2;q<pp.length;q+=2)ctx.lineTo(pp[q],pp[q+1]);
+      ctx.closePath();ctx.fillStyle=it.f;ctx.fill();
+    }else if(it.t===1){
+      ctx.beginPath();ctx.setLineDash(it.dash||[]);
+      ctx.moveTo(it.x1,it.y1);ctx.lineTo(it.x2,it.y2);
+      ctx.strokeStyle=it.c;ctx.lineWidth=it.w;ctx.stroke();ctx.setLineDash([]);
+    }else{
+      ctx.beginPath();ctx.arc(it.x,it.y,it.r,0,6.2832);
+      ctx.fillStyle=it.f;ctx.fill();ctx.lineWidth=it.lw;ctx.strokeStyle=it.s;ctx.stroke();
+    }
+  }
+  /* 立体の縁 */
+  ctx.strokeStyle=rgba(th.inkRGB,1,0.6);ctx.lineWidth=1.2;
+  for(wi=0;wi<4;wi++){
+    var FW=walls[wi],e0=FW.get(0),e1=FW.get(N-1),r0,r1;
+    ctx.beginPath();
+    for(k=0;k<N;k++){var gk=FW.get(k),rk=pj(gk[0],gk[1],gk[2]);if(k===0)ctx.moveTo(rk[0],rk[1]);else ctx.lineTo(rk[0],rk[1]);}
+    ctx.stroke();
+    r0=pj(e0[0],e0[1],-1);r1=pj(e1[0],e1[1],-1);
+    ctx.beginPath();ctx.moveTo(r0[0],r0[1]);ctx.lineTo(r1[0],r1[1]);ctx.stroke();
+    var t0=pj(e0[0],e0[1],e0[2]),t1=pj(e1[0],e1[1],e1[2]);
+    ctx.beginPath();ctx.moveTo(r0[0],r0[1]);ctx.lineTo(t0[0],t0[1]);ctx.moveTo(r1[0],r1[1]);ctx.lineTo(t1[0],t1[1]);ctx.stroke();
+  }
+
+  /* 軸の名前(数値の目盛りは出さない) */
+  var cor=[[-1,-1],[1,-1],[1,1],[-1,1]];
+  function midY(x,y,z){return pj(x,y,z)[1];}
+  var tY=midY(0,-1,-1)>midY(0,1,-1)?-1:1;
+  var pX=midY(-1,0,-1)>midY(1,0,-1)?-1:1;
+  var ctr=pj(0,0,-1);
+  function outDir(mx,my){
+    var m=pj(mx,my,-1),dx=m[0]-ctr[0],dy=m[1]-ctr[1],l=Math.sqrt(dx*dx+dy*dy)||1;
+    return [dx/l,dy/l];
+  }
+  var dT=outDir(0,tY),dP=outDir(pX,0);
+  var best=cor[0],bx=1e9;
+  for(i=0;i<4;i++){var qx=pj(cor[i][0],cor[i][1],0)[0];if(qx<bx){bx=qx;best=cor[i];}}
+  ctx.font='600 13px '+FONT;ctx.fillStyle=th.ink;ctx.textAlign='center';ctx.textBaseline='middle';
+  var mT=pj(0,tY,-1),mP=pj(pX,0,-1);
+  ctx.fillText('T(温度)',mT[0]+dT[0]*26,mT[1]+dT[1]*26);
+  ctx.fillText('P(圧力)',mP[0]+dP[0]*26,mP[1]+dP[1]*26);
+  var tp=pj(best[0],best[1],1);
+  ctx.textAlign='left';
+  ctx.fillText('μ',clamp(tp[0]-4,6,w-20),Math.max(14,tp[1]-14));
+}
+
+/* ---------- 2Dグラフ共通 ---------- */
+var MG={l:26,r:14,t:22,b:26};
+function frame(ctx,w,h,xl,yl){
+  var x0=MG.l,x1=w-MG.r,y0=h-MG.b,y1=MG.t;
+  ctx.strokeStyle=th.muted;ctx.fillStyle=th.muted;ctx.lineWidth=1.4;ctx.lineCap='butt';
+  ctx.beginPath();ctx.moveTo(x0,y1-4);ctx.lineTo(x0,y0);ctx.lineTo(x1+4,y0);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(x0,y1-10);ctx.lineTo(x0-3.5,y1-3);ctx.lineTo(x0+3.5,y1-3);ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.moveTo(x1+10,y0);ctx.lineTo(x1+3,y0-3.5);ctx.lineTo(x1+3,y0+3.5);ctx.closePath();ctx.fill();
+  ctx.font='600 12px '+FONT;ctx.fillStyle=th.ink;ctx.textBaseline='alphabetic';
+  ctx.textAlign='right';ctx.fillText(xl,x1+8,h-6);
+  ctx.textAlign='left';ctx.fillText(yl,x0+8,13);
+}
+function transitions(getMus,a,b,n){
+  var out=[],prev=argmin3(getMus(a)),pa=a;
+  for(var k=1;k<=n;k++){
+    var t=a+(b-a)*k/n,cur=argmin3(getMus(t));
+    if(cur!==prev){
+      var lo=pa,hi=t;
+      for(var it=0;it<40;it++){var m=0.5*(lo+hi);if(argmin3(getMus(m))===prev)lo=m;else hi=m;}
+      var tt=0.5*(lo+hi);
+      out.push({t:tt,from:prev,to:cur,mu:getMus(tt)[cur]});
+    }
+    prev=cur;pa=t;
+  }
+  return out;
+}
+function pairName(t,isT){
+  var a=Math.min(t.from,t.to),b=Math.max(t.from,t.to);
+  if(a===0&&b===1)return isT?'融点':'融解圧';
+  if(a===1&&b===2)return isT?'沸点':'蒸気圧';
+  return isT?'昇華点':'昇華圧';
+}
+function drawMu(canvas,isT){
+  var s=setup(canvas),ctx=s.ctx,w=s.w,h=s.h;
+  if(w<10||h<10)return;
+  var x0=MG.l,x1=w-MG.r,y0=h-MG.b,y1=MG.t;
+  var a=isT?view.T0:view.P0,b=isT?view.T1:view.P1;
+  var getMus=isT?function(T){return musAt(T,state.P);}:function(P){return musAt(state.T,P);};
+  /* 縦軸は、固体と液体の線が枠いっぱいに見えるように、この断面ごとに決める */
+  var n=240,vals=[],k,lo=1e9,hi=-1e9,v;
+  for(k=0;k<=n;k++){v=getMus(a+(b-a)*k/n);vals.push(v);lo=Math.min(lo,v[0],v[1]);hi=Math.max(hi,v[0],v[1]);}
+  var pad=0.28*(hi-lo)+1e-6,zlo=lo-pad,zhi=hi+pad;
+  function X(u){return x0+(u-a)/(b-a)*(x1-x0);}
+  function Y(u){return y0-(u-zlo)/(zhi-zlo)*(y0-y1);}
+  ctx.fillStyle=th.plot;ctx.fillRect(0,0,w,h);
+  ctx.save();ctx.beginPath();ctx.rect(x0,y1,x1-x0,y0-y1);ctx.clip();
+  ctx.lineJoin='round';ctx.lineCap='round';
+  for(var p=0;p<3;p++){
+    ctx.beginPath();
+    for(k=0;k<=n;k++){var px=X(a+(b-a)*k/n),py=Y(vals[k][p]);if(k===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);}
+    ctx.strokeStyle=th.colStr[p];ctx.globalAlpha=0.5;ctx.lineWidth=1.3;ctx.stroke();ctx.globalAlpha=1;
+    ctx.beginPath();var open=false;
+    for(k=0;k<n;k++){
+      var mid=[(vals[k][0]+vals[k+1][0])/2,(vals[k][1]+vals[k+1][1])/2,(vals[k][2]+vals[k+1][2])/2];
+      if(argmin3(mid)===p){
+        if(!open){ctx.moveTo(X(a+(b-a)*k/n),Y(vals[k][p]));open=true;}
+        ctx.lineTo(X(a+(b-a)*(k+1)/n),Y(vals[k+1][p]));
+      }else open=false;
+    }
+    ctx.strokeStyle=th.colStr[p];ctx.lineWidth=3.2;ctx.stroke();
+  }
+  ctx.restore();
+
+  var cur=isT?state.T:state.P,xc=X(cur);
+  ctx.setLineDash([4,3]);ctx.strokeStyle=th.muted;ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(xc,y1);ctx.lineTo(xc,y0);ctx.stroke();ctx.setLineDash([]);
+  var tr=transitions(getMus,a,b,400),i;
+  ctx.font='600 11px '+FONT;ctx.textBaseline='alphabetic';
+  for(i=0;i<tr.length;i++){
+    var tx=X(tr[i].t),ty=Y(tr[i].mu);
+    if(ty<y1||ty>y0)continue;
+    ctx.beginPath();ctx.arc(tx,ty,5,0,6.2832);ctx.fillStyle=th.panel;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle=th.ink;ctx.stroke();
+    var right=tx>x1-52;
+    haloText(ctx,pairName(tr[i],isT),tx+(right?-8:8),i%2===0?Math.max(y1+10,ty-9):Math.min(y0-4,ty+17),right?'right':'left');
+  }
+  frame(ctx,w,h,isT?'T':'P','μ');
+}
+
+/* ---------- P-T図 ---------- */
+var cpt=document.getElementById('cpt');
+function drawPT(){
+  var s=setup(cpt),ctx=s.ctx,w=s.w,h=s.h;
+  if(w<10||h<10)return;
+  var x0=MG.l,x1=w-MG.r,y0=h-MG.b,y1=MG.t;
+  function X(T){return x0+(T-view.T0)/(view.T1-view.T0)*(x1-x0);}
+  function Y(P){return y0-(P-view.P0)/(view.P1-view.P0)*(y0-y1);}
+  ctx.fillStyle=th.plot;ctx.fillRect(0,0,w,h);
+  var cell=Math.max(3,Math.round(w/120)),sums=[[0,0,0],[0,0,0],[0,0,0]],cx,cy,i;
+  for(cy=y1;cy<y0;cy+=cell){
+    var P=view.P0+(y0-(cy+cell/2))/(y0-y1)*(view.P1-view.P0);
+    for(cx=x0;cx<x1;cx+=cell){
+      var T=view.T0+((cx+cell/2)-x0)/(x1-x0)*(view.T1-view.T0);
+      var pp=argmin3(musAt(T,P));
+      ctx.fillStyle=rgba(th.col[pp],1,0.26);
+      ctx.fillRect(cx,cy,Math.min(cell,x1-cx),Math.min(cell,y0-cy));
+      sums[pp][0]+=cx;sums[pp][1]+=cy;sums[pp][2]++;
+    }
+  }
+  ctx.save();ctx.beginPath();ctx.rect(x0,y1,x1-x0,y0-y1);ctx.clip();
+  ctx.strokeStyle=th.ink;ctx.lineWidth=2;ctx.lineJoin='round';
+  [bnd.sl,bnd.lg,bnd.sg].forEach(function(arr){
+    ctx.beginPath();
+    for(var k=0;k<arr.length;k++){var px=X(arr[k].T),py=Y(arr[k].P);if(k===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);}
+    ctx.stroke();
+  });
+  ctx.font='600 13px '+FONT;ctx.textBaseline='middle';
+  for(i=0;i<3;i++){
+    if(sums[i][2]>30)haloText(ctx,NAMES[i],sums[i][0]/sums[i][2],sums[i][1]/sums[i][2],'center');
+  }
+  ctx.beginPath();ctx.arc(X(1),Y(1),4.5,0,6.2832);ctx.fillStyle=th.panel;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle=th.ink;ctx.stroke();
+  ctx.font='600 11px '+FONT;ctx.textBaseline='alphabetic';
+  haloText(ctx,'三重点',X(1)+9,Y(1)+15,'left');
+  var px0=X(state.T),py0=Y(state.P);
+  ctx.setLineDash([4,3]);ctx.strokeStyle=th.muted;ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(px0,y1);ctx.lineTo(px0,y0);ctx.moveTo(x0,py0);ctx.lineTo(x1,py0);ctx.stroke();ctx.setLineDash([]);
+  ctx.beginPath();ctx.arc(px0,py0,6,0,6.2832);ctx.fillStyle=th.ink;ctx.fill();ctx.lineWidth=2.5;ctx.strokeStyle=th.plot;ctx.stroke();
+  ctx.restore();
+  frame(ctx,w,h,'T','P');
+}
+
+/* ---------- 描画の制御 ---------- */
+var raf=0,need3=false,need2=false;
+function schedule(which){
+  if(which==='3d')need3=true;else{need3=true;need2=true;}
+  if(!raf)raf=requestAnimationFrame(function(){
+    raf=0;
+    readTheme();
+    if(need3)draw3D();
+    if(need2){drawPT();drawMu(document.getElementById('cmt'),true);drawMu(document.getElementById('cmp'),false);}
+    need3=false;need2=false;
+  });
+}
+function setSubstance(key){
+  var sb=SUBST[key];
+  M.vs=sb.vs;state.T=sb.def.T;state.P=sb.def.P;
+  document.getElementById('modelNote').textContent=sb.note+NOTE_TAIL;
+  var btns=document.querySelectorAll('#substSeg button');
+  for(var i=0;i<btns.length;i++)btns[i].setAttribute('aria-pressed',btns[i].getAttribute('data-s')===key?'true':'false');
+  buildBoundaries();buildMesh();schedule('all');
+}
+
+/* ---------- 入力 ---------- */
+document.getElementById('substSeg').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(b)setSubstance(b.getAttribute('data-s'));
+});
+document.getElementById('resetView').addEventListener('click',function(){
+  state.az=AZ0;state.el=EL0;state.zoom=1;schedule('3d');
+});
+
+var ptrs=new Map();
+c3.addEventListener('pointerdown',function(e){
+  try{c3.setPointerCapture(e.pointerId);}catch(_){}
+  ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+});
+c3.addEventListener('pointermove',function(e){
+  var p=ptrs.get(e.pointerId);if(!p)return;
+  var dx=e.clientX-p.x,dy=e.clientY-p.y;
+  if(ptrs.size===1){
+    state.az+=dx*0.008;state.el=clamp(state.el+dy*0.006,0.1,1.45);
+  }else if(ptrs.size===2){
+    var other=null;
+    ptrs.forEach(function(v,id){if(id!==e.pointerId)other=v;});
+    var d0=Math.hypot(p.x-other.x,p.y-other.y),d1=Math.hypot(e.clientX-other.x,e.clientY-other.y);
+    if(d0>0)state.zoom=clamp(state.zoom*d1/d0,0.6,2.4);
+  }
+  p.x=e.clientX;p.y=e.clientY;schedule('3d');
+});
+function endPtr(e){ptrs.delete(e.pointerId);}
+c3.addEventListener('pointerup',endPtr);
+c3.addEventListener('pointercancel',endPtr);
+c3.addEventListener('wheel',function(e){
+  e.preventDefault();
+  state.zoom=clamp(state.zoom*Math.exp(-e.deltaY*0.0012),0.6,2.4);schedule('3d');
+},{passive:false});
+
+function bindDrag(canvas,setter){
+  var down=false;
+  function at(e){
+    var r=canvas.getBoundingClientRect();
+    setter(e.clientX-r.left,e.clientY-r.top,r.width,r.height);
+    schedule('all');
+  }
+  canvas.addEventListener('pointerdown',function(e){down=true;try{canvas.setPointerCapture(e.pointerId);}catch(_){}at(e);});
+  canvas.addEventListener('pointermove',function(e){if(down)at(e);});
+  canvas.addEventListener('pointerup',function(){down=false;});
+  canvas.addEventListener('pointercancel',function(){down=false;});
+}
+bindDrag(cpt,function(x,y,w,h){
+  var fx=clamp((x-MG.l)/(w-MG.l-MG.r),0,1),fy=clamp((h-MG.b-y)/(h-MG.b-MG.t),0,1);
+  state.T=view.T0+fx*(view.T1-view.T0);state.P=view.P0+fy*(view.P1-view.P0);
+});
+bindDrag(document.getElementById('cmt'),function(x,y,w){
+  state.T=view.T0+clamp((x-MG.l)/(w-MG.l-MG.r),0,1)*(view.T1-view.T0);
+});
+bindDrag(document.getElementById('cmp'),function(x,y,w){
+  state.P=view.P0+clamp((x-MG.l)/(w-MG.l-MG.r),0,1)*(view.P1-view.P0);
+});
+
+if(window.ResizeObserver){
+  var ro=new ResizeObserver(function(){schedule('all');});
+  ['c3d','cpt','cmt','cmp'].forEach(function(id){ro.observe(document.getElementById(id));});
+}
+if(window.matchMedia){
+  var mq=window.matchMedia('(prefers-color-scheme: dark)');
+  if(mq.addEventListener)mq.addEventListener('change',function(){schedule('all');});
+}
+new MutationObserver(function(){schedule('all');}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+setSubstance('water');
+})();
+</script>
+</body></html>
