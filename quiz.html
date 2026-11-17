@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>官能基とアルカンの綴りクイズ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: 上に出題の設定、中央に大きなカード1枚、下に「もう一度」「覚えた」。操作はカードをめくる・仕分けるだけ。 */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --ink:#15202b; --muted:#5d6b79; --rule:#d5dce4; --soft:#e4e9ee;
+  --accent:#17324d; --onaccent:#ffffff; --ring:#2a5f8f;
+  --cO:#c0392b; --cN:#2a5fb0; --cS:#a8740a; --cX:#2c8a54; --good:#2c8a54; --again:#b4562b;
+  --font:"Noto Sans JP","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f151c; --panel:#161e27; --ink:#e8edf2; --muted:#93a1b0; --rule:#2a3541; --soft:#202a35;
+  --accent:#d7e3ef; --onaccent:#0f151c; --ring:#7fb4e6;
+  --cO:#ff8a7a; --cN:#7fb0ff; --cS:#e6b450; --cX:#6fd09a; --good:#6fd09a; --again:#f0a070; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#0f151c; --panel:#161e27; --ink:#e8edf2; --muted:#93a1b0; --rule:#2a3541; --soft:#202a35;
+  --accent:#d7e3ef; --onaccent:#0f151c; --ring:#7fb4e6;
+  --cO:#ff8a7a; --cN:#7fb0ff; --cS:#e6b450; --cX:#6fd09a; --good:#6fd09a; --again:#f0a070; color-scheme:dark;}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);margin:0;
+  padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));}
+.app{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1{font-size:1.15rem;margin:0;font-weight:700;letter-spacing:.02em}
+.row{display:flex;flex-wrap:wrap;gap:10px 18px}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:8px 14px;cursor:pointer;min-height:40px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--onaccent);border-color:var(--accent)}
+button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.prog{display:flex;align-items:center;gap:10px;font-size:.85rem;color:var(--muted)}
+.bar{flex:1;height:6px;background:var(--soft);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--good);transition:width .25s}
+.q{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;min-height:230px;justify-content:center;text-align:center}
+.q svg{max-width:100%;height:150px;display:block}
+.qa{font-size:.85rem;color:var(--muted)}
+.ja{font-size:1.05rem;font-weight:700}
+.big{font-size:1.9rem;font-weight:700;line-height:1.25;overflow-wrap:anywhere}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:420px){.opts{grid-template-columns:1fr}}
+.opt{font:inherit;font-size:1.05rem;color:var(--ink);background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:14px 12px;cursor:pointer;min-height:56px;text-align:left;display:flex;gap:10px;align-items:center;overflow-wrap:anywhere}
+.opt b{color:var(--muted);font-weight:600;font-size:.85rem}
+.opt:disabled{cursor:default}
+.opt.ok{border-color:var(--good);background:color-mix(in srgb,var(--good) 16%,var(--panel))}
+.opt.ng{border-color:var(--again);background:color-mix(in srgb,var(--again) 16%,var(--panel))}
+.fb{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:12px 14px;display:none;flex-direction:column;gap:6px}
+.fb.on{display:flex}
+.fb .v{font-weight:700}
+.fb .v.ok{color:var(--good)}.fb .v.ng{color:var(--again)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--rule);border-radius:999px;padding:2px 12px;font-size:.92rem;background:var(--soft)}
+.chip small{color:var(--muted);margin-right:6px;font-size:.75rem}
+.ex{font-size:.9rem;color:var(--muted)}
+.nx{font:inherit;font-weight:700;padding:12px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:var(--onaccent);cursor:pointer;min-height:48px}
+.done{display:none;text-align:center;gap:12px;flex-direction:column;align-items:center;padding:50px 10px}
+.done button{font:inherit;padding:10px 18px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:var(--onaccent);cursor:pointer}
+svg text{font-family:var(--font)}
+</style>
+<style>[hidden]{display:none!important}</style></head><body>
+<div class="app">
+  <h1>官能基とアルカンの綴りクイズ</h1>
+  <div class="row">
+    <div class="seg" id="deck" role="group" aria-label="問題の種類">
+      <button type="button" data-d="fg" aria-pressed="true">官能基</button>
+      <button type="button" data-d="alk" aria-pressed="false">アルカン C1〜10</button>
+    </div>
+    <div class="seg" id="kind" role="group" aria-label="覚える綴り">
+      <button type="button" data-k="name" aria-pressed="true">名前</button>
+      <button type="button" data-k="suf" aria-pressed="false" id="kSuf">接尾辞</button>
+      <button type="button" data-k="pre" aria-pressed="false" id="kPre">接頭辞</button>
+    </div>
+  </div>
+  <div class="prog"><span id="pt"></span><div class="bar"><i id="pb"></i></div></div>
+  <div id="quiz" style="display:contents">
+    <div class="q" id="q" aria-live="polite"></div>
+    <div class="opts" id="opts" role="group" aria-label="選択肢"></div>
+    <div class="fb" id="fb"></div>
+    <button type="button" class="nx" id="next" style="display:none">次へ</button>
+  </div>
+  <div class="done" id="done"><div class="big">全部正解しました</div><div id="sum" class="qa"></div><button type="button" id="redo">最初からやり直す</button></div>
+</div>
+<script>
+/* ---- 構造式: 原子 [ラベル,x,y] と 結合 [i,j,次数] ---- */
+var S=33,D=19; /* 結合1本ぶんの水平・垂直の振れ(30°の折れ線) */
+function hex(){var a=[],b=[],k;for(k=0;k<6;k++){var t=(-90+60*k)*Math.PI/180;a.push(['',32*Math.cos(t),32*Math.sin(t)]);}
+  for(k=0;k<6;k++)b.push([k,(k+1)%6,k%2?1:2]);return {a:a,b:b};}
+function zig(n){var a=[],b=[],i;for(i=0;i<n;i++){a.push(['',i*S,i%2?-D:0]);if(i)b.push([i-1,i,1]);}return {a:a,b:b};}
+var H=hex();
+var ST={
+ alcohol:{a:[['R',0,0],['',S,-D],['OH',2*S,0]],b:[[0,1,1],[1,2,1]]},
+ thiol:{a:[['R',0,0],['',S,-D],['SH',2*S,0]],b:[[0,1,1],[1,2,1]]},
+ amine:{a:[['R',0,0],['',S,-D],['NH2',2*S,0]],b:[[0,1,1],[1,2,1]]},
+ halide:{a:[['R',0,0],['',S,-D],['X',2*S,0]],b:[[0,1,1],[1,2,1]]},
+ ether:{a:[['R',0,0],['O',S,-D],["R'",2*S,0]],b:[[0,1,1],[1,2,1]]},
+ sulfide:{a:[['R',0,0],['S',S,-D],["R'",2*S,0]],b:[[0,1,1],[1,2,1]]},
+ aldehyde:{a:[['R',0,0],['',S,-D],['O',S,-D-38],['H',2*S,0]],b:[[0,1,1],[1,2,2],[1,3,1]]},
+ ketone:{a:[['R',0,0],['',S,-D],['O',S,-D-38],["R'",2*S,0]],b:[[0,1,1],[1,2,2],[1,3,1]]},
+ acid:{a:[['R',0,0],['',S,-D],['O',S,-D-38],['OH',2*S,0]],b:[[0,1,1],[1,2,2],[1,3,1]]},
+ acyl:{a:[['R',0,0],['',S,-D],['O',S,-D-38],['Cl',2*S,0]],b:[[0,1,1],[1,2,2],[1,3,1]]},
+ amide:{a:[['R',0,0],['',S,-D],['O',S,-D-38],['NH2',2*S,0]],b:[[0,1,1],[1,2,2],[1,3,1]]},
+ ester:{a:[['R',0,0],['',S,-D],['O',S,-D-38],['O',2*S,0],["R'",3*S,-D]],b:[[0,1,1],[1,2,2],[1,3,1],[3,4,1]]},
+ anhydride:{a:[['R',0,0],['',S,-D],['O',S,-D-38],['O',2*S,0],['',3*S,-D],['O',3*S,-D-38],['R',4*S,0]],b:[[0,1,1],[1,2,2],[1,3,1],[3,4,1],[4,5,2],[4,6,1]]},
+ nitrile:{a:[['R',0,0],['C',38,0],['N',82,0]],b:[[0,1,1],[1,2,3]]},
+ nitro:{a:[['R',0,0],['N⁺',S,-D],['O',S,-D-38],['O⁻',2*S,0]],b:[[0,1,1],[1,2,2],[1,3,1]]},
+ imine:{a:[['R',0,0],['',S,-D],['R',S,-D-38],['N',2*S,0],["R'",3*S,-D]],b:[[0,1,1],[1,2,1],[1,3,2],[3,4,1]]},
+ azo:{a:[['R',0,0],['N',S,-D],['N',2*S,0],['R',3*S,-D]],b:[[0,1,1],[1,2,2],[2,3,1]]},
+ epoxide:{a:[['',0,0],['',42,0],['O',21,-36]],b:[[0,1,1],[1,2,1],[2,0,1]]},
+ sulfonic:{a:[['R',0,0],['S',44,0],['OH',88,0],['O',44,-40],['O',44,40]],b:[[0,1,1],[1,2,1],[1,3,2],[1,4,2]]},
+ arene:H,
+ phenol:{a:H.a.concat([['OH',0,-32-38]]),b:H.b.concat([[0,6,1]])}
+};
+var ALK=[['methane','CH₄','meth-','methyl'],['ethane','C₂H₆','eth-','ethyl'],['propane','C₃H₈','prop-','propyl'],['butane','C₄H₁₀','but-','butyl'],['pentane','C₅H₁₂','pent-','pentyl'],['hexane','C₆H₁₄','hex-','hexyl'],['heptane','C₇H₁₆','hept-','heptyl'],['octane','C₈H₁₈','oct-','octyl'],['nonane','C₉H₂₀','non-','nonyl'],['decane','C₁₀H₂₂','dec-','decyl']];
+function alkStruct(n){if(n===1)return {a:[['CH₄',0,0]],b:[]};if(n===2)return {a:[['CH₃',0,0],['CH₃',S*2.6,0]],b:[[0,1,1]]};return zig(n);}
+var FG=[
+ ['alcohol','alcohol','アルコール','-ol','hydroxy-','ethanol'],
+ ['phenol','phenol','フェノール','phenol(母体名)','hydroxy-','phenol'],
+ ['ether','ether','エーテル','ether(〜 alkyl ether)','alkoxy-','diethyl ether'],
+ ['thiol','thiol','チオール','-thiol','sulfanyl-','ethanethiol'],
+ ['sulfide','sulfide (thioether)','スルフィド','sulfide','alkylsulfanyl-','dimethyl sulfide'],
+ ['aldehyde','aldehyde','アルデヒド','-al','formyl- / oxo-','ethanal'],
+ ['ketone','ketone','ケトン','-one','oxo-','propanone'],
+ ['acid','carboxylic acid','カルボン酸','-oic acid','carboxy-','ethanoic acid'],
+ ['ester','ester','エステル','-oate','alkoxycarbonyl-','ethyl ethanoate'],
+ ['acyl','acyl chloride','酸塩化物','-oyl chloride','chlorocarbonyl-','ethanoyl chloride'],
+ ['anhydride','acid anhydride','酸無水物','-oic anhydride','—','ethanoic anhydride'],
+ ['amide','amide','アミド','-amide','carbamoyl-','ethanamide'],
+ ['amine','amine','アミン','-amine','amino-','methylamine'],
+ ['nitrile','nitrile','ニトリル','-nitrile','cyano-','ethanenitrile'],
+ ['nitro','nitro compound','ニトロ化合物','—','nitro-','nitromethane'],
+ ['imine','imine','イミン','-imine','imino-','ethanimine'],
+ ['azo','azo compound','アゾ化合物','azo','azo-','azobenzene'],
+ ['epoxide','epoxide','エポキシド','oxirane','epoxy-','ethylene oxide'],
+ ['sulfonic','sulfonic acid','スルホン酸','-sulfonic acid','sulfo-','methanesulfonic acid'],
+ ['halide','alkyl halide','ハロゲン化アルキル','—','fluoro- / chloro- / bromo- / iodo-','chloromethane'],
+ ['arene','arene (aromatic)','芳香族(アレーン)','benzene(母体名)','phenyl-(置換基)','benzene']
+].map(function(r){return {st:ST[r[0]],en:r[1],ja:r[2],suf:r[3],pre:r[4],ex:r[5]};});
+var AK=ALK.map(function(r,i){return {st:alkStruct(i+1),en:r[0],ja:'炭素数 '+(i+1)+' のアルカン',suf:r[2],pre:r[3],ex:r[1],alk:true};});
+
+function svgOf(st){
+  var a=st.a,i,xs=a.map(function(p){return p[1];}),ys=a.map(function(p){return p[2];});
+  var x0=Math.min.apply(0,xs)-22,x1=Math.max.apply(0,xs)+22,y0=Math.min.apply(0,ys)-22,y1=Math.max.apply(0,ys)+22;
+  function rad(l){return l?9+6*(Math.max(1,l.length)-1):0;}
+  var o='<svg xmlns="http://www.w3.org/2000/svg" viewBox="'+x0+' '+y0+' '+(x1-x0)+' '+(y1-y0)+'" role="img" aria-label="構造式"><g stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none">';
+  st.b.forEach(function(b){
+    var p=a[b[0]],q=a[b[1]],dx=q[1]-p[1],dy=q[2]-p[2],L=Math.hypot(dx,dy),ux=dx/L,uy=dy/L,nx=-uy,ny=ux;
+    var ra=rad(p[0]),rb=rad(q[0]);
+    var ax=p[1]+ux*ra,ay=p[2]+uy*ra,bx=q[1]-ux*rb,by=q[2]-uy*rb;
+    var offs=b[2]===1?[0]:b[2]===2?[-2.8,2.8]:[-4,0,4];
+    offs.forEach(function(f){o+='<line x1="'+(ax+nx*f)+'" y1="'+(ay+ny*f)+'" x2="'+(bx+nx*f)+'" y2="'+(by+ny*f)+'"/>';});
+  });
+  o+='</g>';
+  a.forEach(function(p){
+    if(!p[0])return;var c=p[0].charAt(0),fill='var(--ink)';
+    if(c==='O')fill='var(--cO)';else if(c==='N')fill='var(--cN)';else if(c==='S')fill='var(--cS)';
+    else if(c==='X'||p[0]==='Cl')fill='var(--cX)';else if(c==='R')fill='var(--muted)';
+    o+='<text x="'+p[1]+'" y="'+p[2]+'" text-anchor="middle" dominant-baseline="central" font-size="19" font-weight="700" fill="'+fill+'">'+p[0].replace('NH2','NH\u2082')+'</text>';
+  });
+  return o+'</svg>';
+}
+function sub(s){return s.replace(/NH2/g,'NH₂');}
+
+/* ---- 綴りの似せた選択肢をつくる ---- */
+var VOW={a:'eo',e:'ai',i:'ey',o:'ua',u:'o',y:'i'};
+var SIM={l:'r',m:'n',n:'m',b:'p',p:'b',d:'t',t:'d',s:'c',c:'s'};
+var VALID={};
+function variants(w,stemLen){
+  var out={},n=stemLen==null?w.length:stemLen,i,c,short=w.replace(/[^a-z]/g,'').length<=4;
+  function add(x){if(x&&x!==w&&!VALID[x]&&!/(.)\1\1/.test(x))out[x]=1;}
+  for(i=0;i<n;i++){
+    c=w[i];if(!/[a-z]/.test(c))continue;
+    if(!short&&i+1<n&&/[a-z]/.test(w[i+1])&&w[i+1]!==c)add(w.slice(0,i)+w[i+1]+c+w.slice(i+2));    /* 隣と入れ替え */
+    if(!/[aeiouy]/.test(c)&&w[i+1]!==c)add(w.slice(0,i+1)+c+w.slice(i+1));                          /* 子音を重ねる */
+    if(w[i+1]===c&&/[a-z]/.test(c))add(w.slice(0,i)+w.slice(i+1));                                  /* 重なりを1つに */
+    if(VOW[c])VOW[c].split('').forEach(function(v){add(w.slice(0,i)+v+w.slice(i+1));});             /* 母音をずらす */
+    if(!short&&i>0)add(w.slice(0,i)+w.slice(i+1));                                                  /* 1文字抜ける */
+    if(short&&SIM[c])add(w.slice(0,i)+SIM[c]+w.slice(i+1));                                         /* 似た子音 */
+    if(c==='c'&&w[i+1]!=='h')add(w.slice(0,i)+'k'+w.slice(i+1));
+    if(c==='f')add(w.slice(0,i)+'ph'+w.slice(i+1));
+    if(c==='p'&&w[i+1]==='h')add(w.slice(0,i)+'f'+w.slice(i+2));
+  }
+  return Object.keys(out);
+}
+function pick3(w,alk){
+  var pool=alk?variants(w,w.length-3):variants(w);
+  if(alk)['ain','an','anne'].forEach(function(t){var x=w.slice(0,-3)+t;if(!VALID[x])pool.push(x);});
+  pool=shuffle(pool.filter(function(x){return x!==w;}));
+  var res=[],i;
+  for(i=0;i<pool.length&&res.length<3;i++)if(res.indexOf(pool[i])<0)res.push(pool[i]);
+  return res;
+}
+function clean(r){return r.replace(/\s*\(.*\)/,'');}
+function firstOf(r){return clean(r.split(' / ')[0]);}
+FG.forEach(function(c){c.A={name:clean(c.en),suf:/^-/.test(c.suf)?c.suf:null,pre:c.pre==='\u2014'?null:firstOf(c.pre)};if(c.en==='alkyl halide')c.A.pre='chloro-';});
+AK.forEach(function(c){c.A={name:c.en,suf:c.suf,pre:c.pre};});
+FG.concat(AK).forEach(function(c){['name','suf','pre'].forEach(function(k){if(c.A[k])VALID[c.A[k]]=1;});});
+
+/* ---- 出題の状態 ---- */
+var $=function(i){return document.getElementById(i);};
+var st={deck:'fg',kind:'name',queue:[],ok:0,miss:0,total:0,cur:null,answered:false};
+function cards(){return st.deck==='fg'?FG:AK;}
+function shuffle(a){for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),t=a[i];a[i]=a[j];a[j]=t;}return a;}
+function kindLabels(){return st.deck==='fg'?['名前','接尾辞','接頭辞']:['名前','語幹','アルキル基'];}
+function syncKindBtns(){var L=kindLabels(),b=$('kind').children;b[0].textContent=L[0];b[1].textContent=L[1];b[2].textContent=L[2];}
+function restart(){
+  syncKindBtns();
+  var c=cards(),idx=[];c.forEach(function(x,i){if(x.A[st.kind])idx.push(i);});
+  st.queue=shuffle(idx);st.ok=0;st.miss=0;st.total=idx.length;showNext();
+}
+function showNext(){
+  var done=st.queue.length===0;
+  $('quiz').style.display=done?'none':'contents';$('done').style.display=done?'flex':'none';
+  $('pt').textContent='正解 '+st.ok+' / '+st.total+(st.miss?'(ミス '+st.miss+')':'');$('pb').style.width=(st.total?100*st.ok/st.total:0)+'%';
+  if(done){$('sum').textContent='ミス '+st.miss+' 回';return;}
+  var c=cards()[st.queue[0]],L=kindLabels(),ans=c.A[st.kind];
+  st.cur={c:c,ans:ans};st.answered=false;
+  var head=st.kind==='name'?(c.alk?'このアルカンの名前の綴りは?':'この官能基の名前の綴りは?')
+    :'「'+c.A.name+'」の'+L[st.kind==='suf'?1:2]+'の綴りは?';
+  $('q').innerHTML=svgOf(c.st)+'<div class="ja">'+c.ja+(st.kind==='name'?'':' / '+c.A.name)+'</div><div class="qa">'+head+'</div>';
+  var opts=shuffle([ans].concat(pick3(ans,c.alk&&st.kind==='name')));
+  $('opts').innerHTML='';
+  opts.forEach(function(o,i){var b=document.createElement('button');b.type='button';b.className='opt';b.setAttribute('data-o',o);
+    b.innerHTML='<b>'+'ABCD'.charAt(i)+'</b><span></span>';b.lastChild.textContent=o;$('opts').appendChild(b);});
+  $('fb').className='fb';$('fb').innerHTML='';$('next').style.display='none';
+}
+function choose(btn){
+  if(st.answered)return;st.answered=true;
+  var val=btn.getAttribute('data-o'),good=val===st.cur.ans,c=st.cur.c,L=kindLabels();
+  Array.prototype.forEach.call($('opts').children,function(b){b.disabled=true;if(b.getAttribute('data-o')===st.cur.ans)b.classList.add('ok');});
+  if(!good)btn.classList.add('ng');
+  var idx=st.queue.shift();
+  if(good){st.ok++;}else{st.miss++;st.queue.splice(Math.min(3,st.queue.length),0,idx);}
+  $('pt').textContent='正解 '+st.ok+' / '+st.total+(st.miss?'(ミス '+st.miss+')':'');$('pb').style.width=(100*st.ok/st.total)+'%';
+  $('fb').className='fb on';
+  $('fb').innerHTML='<div class="v '+(good?'ok':'ng')+'">'+(good?'正解':'不正解。正しい綴りは '+st.cur.ans)+'</div>'
+    +'<div><b>'+c.en+'</b> / '+c.ja+'</div><div class="chips"><span class="chip"><small>'+L[1]+'</small>'+sub(c.suf)+'</span><span class="chip"><small>'+L[2]+'</small>'+c.pre+'</span></div><div class="ex">'+(c.alk?'分子式 ':'例: ')+c.ex+'</div>';
+  $('next').style.display='';$('next').focus();
+}
+$('opts').addEventListener('click',function(e){var b=e.target.closest('.opt');if(b)choose(b);});
+$('next').addEventListener('click',showNext);
+$('redo').addEventListener('click',restart);
+document.addEventListener('keydown',function(e){
+  if(/^[1-4]$/.test(e.key)&&!st.answered){var b=$('opts').children[+e.key-1];if(b)choose(b);}
+});
+function seg(id,key,attr){$(id).addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;st[key]=b.getAttribute(attr);
+  Array.prototype.forEach.call($(id).children,function(x){x.setAttribute('aria-pressed',x===b?'true':'false');});restart();});}
+seg('deck','deck','data-d');seg('kind','kind','data-k');
+restart();
+window.__q=st;
+</script>
+
+</body></html>
