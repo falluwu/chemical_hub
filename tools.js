@@ -27,6 +27,12 @@ var TOOLS = [
     thumb: "cycloalkane.jpg" 
   },
   {
+    title: "有機化学英語クイズ",
+    desc:  "英名をクイズ形式で学ぶ",
+    path:  "quiz.html",
+    thumb: "quiz.jpg" 
+  },
+  {
     title:"2成分の平衡とモル濃度",
     desc: "XとPとTを回して見る",
     path: "phase.html",
