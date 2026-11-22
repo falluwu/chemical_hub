@@ -55,6 +55,18 @@ button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
 .nx{font:inherit;font-weight:700;padding:12px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:var(--onaccent);cursor:pointer;min-height:48px}
 .done{display:none;text-align:center;gap:12px;flex-direction:column;align-items:center;padding:50px 10px}
 .done button{font:inherit;padding:10px 18px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:var(--onaccent);cursor:pointer}
+.tf{display:none;gap:10px}
+.tf.on{display:flex}
+.tf input{flex:1;min-width:0;font:inherit;font-size:1.2rem;padding:12px 14px;border-radius:10px;border:1px solid var(--rule);background:var(--panel);color:var(--ink);min-height:52px}
+.tf input:focus-visible{outline:2px solid var(--ring);outline-offset:1px}
+.tf input:disabled{opacity:.75}
+.tf button{font:inherit;font-weight:700;padding:0 20px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:var(--onaccent);cursor:pointer;min-height:52px}
+.tf button:disabled{opacity:.5;cursor:default}
+.pri{font-size:.8rem;color:var(--muted)}
+.df{font-size:1.05rem;display:flex;flex-direction:column;gap:2px}
+.df span{font-weight:700;letter-spacing:.02em;overflow-wrap:anywhere}
+.df .bad{color:var(--again);text-decoration:underline wavy}
+.df small{color:var(--muted);font-size:.75rem}
 svg text{font-family:var(--font)}
 </style>
 <style>[hidden]{display:none!important}</style></head><body>
@@ -64,17 +76,21 @@ svg text{font-family:var(--font)}
     <div class="seg" id="deck" role="group" aria-label="問題の種類">
       <button type="button" data-d="fg" aria-pressed="true">官能基</button>
       <button type="button" data-d="alk" aria-pressed="false">アルカン C1〜10</button>
+      <button type="button" data-d="cp" aria-pressed="false">官能基が複数ある化合物</button>
     </div>
-    <div class="seg" id="kind" role="group" aria-label="覚える綴り">
-      <button type="button" data-k="name" aria-pressed="true">名前</button>
-      <button type="button" data-k="suf" aria-pressed="false" id="kSuf">接尾辞</button>
-      <button type="button" data-k="pre" aria-pressed="false" id="kPre">接頭辞</button>
+    <div class="seg" id="mode" role="group" aria-label="答え方">
+      <button type="button" data-m="choice" aria-pressed="true">選ぶ</button>
+      <button type="button" data-m="type" aria-pressed="false">入力する</button>
     </div>
   </div>
   <div class="prog"><span id="pt"></span><div class="bar"><i id="pb"></i></div></div>
   <div id="quiz" style="display:contents">
     <div class="q" id="q" aria-live="polite"></div>
     <div class="opts" id="opts" role="group" aria-label="選択肢"></div>
+    <form class="tf" id="tf" autocomplete="off">
+      <input id="inp" type="text" inputmode="latin" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="英語の綴りを入力" placeholder="英語の綴りを入力">
+      <button type="submit" id="go">答える</button>
+    </form>
     <div class="fb" id="fb"></div>
     <button type="button" class="nx" id="next" style="display:none">次へ</button>
   </div>
@@ -195,56 +211,162 @@ FG.forEach(function(c){c.A={name:clean(c.en),suf:/^-/.test(c.suf)?c.suf:null,pre
 AK.forEach(function(c){c.A={name:c.en,suf:c.suf,pre:c.pre};});
 FG.concat(AK).forEach(function(c){['name','suf','pre'].forEach(function(k){if(c.A[k])VALID[c.A[k]]=1;});});
 
-/* ---- 出題の状態 ---- */
-var $=function(i){return document.getElementById(i);};
-var st={deck:'fg',kind:'name',queue:[],ok:0,miss:0,total:0,cur:null,answered:false};
-function cards(){return st.deck==='fg'?FG:AK;}
-function shuffle(a){for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),t=a[i];a[i]=a[j];a[j]=t;}return a;}
-function kindLabels(){return st.deck==='fg'?['名前','接尾辞','接頭辞']:['名前','語幹','アルキル基'];}
-function syncKindBtns(){var L=kindLabels(),b=$('kind').children;b[0].textContent=L[0];b[1].textContent=L[1];b[2].textContent=L[2];}
-function restart(){
-  syncKindBtns();
-  var c=cards(),idx=[];c.forEach(function(x,i){if(x.A[st.kind])idx.push(i);});
-  st.queue=shuffle(idx);st.ok=0;st.miss=0;st.total=idx.length;showNext();
+/* ---- 官能基が複数ついたアルカン化合物 ---- */
+var PRI='優先順位(主基になる順): カルボン酸 > アミド > ニトリル > アルデヒド > ケトン > アルコール > アミン';
+var CPD=[
+ ['4-hydroxybutanal',4,{1:['=O'],4:['OH']},'アルデヒド(-al)が1位','OH は 4位の hydroxy-'],
+ ['3-hydroxybutanoic acid',4,{1:['=O','OH'],3:['OH']},'カルボン酸(-oic acid)が1位','OH は 3位の hydroxy-'],
+ ['4-aminobutan-2-one',4,{2:['=O'],4:['NH2']},'ケトン(-one)が2位','NH₂ は 4位の amino-'],
+ ['5-hydroxypentan-2-one',5,{2:['=O'],5:['OH']},'ケトン(-one)が2位','OH は 5位の hydroxy-'],
+ ['2-chloropropanoic acid',3,{1:['=O','OH'],2:['Cl']},'カルボン酸(-oic acid)が1位','Cl は 2位の chloro-'],
+ ['3-bromopentan-2-one',5,{2:['=O'],3:['Br']},'ケトン(-one)が2位','Br は 3位の bromo-'],
+ ['2-aminoethanol',2,{1:['OH'],2:['NH2']},'アルコール(-ol)が1位','NH₂ は 2位の amino-',['2-aminoethan-1-ol']],
+ ['4-oxopentanoic acid',5,{1:['=O','OH'],4:['=O']},'カルボン酸(-oic acid)が1位','C=O は 4位の oxo-(ケトンより酸が優先)'],
+ ['3-oxobutanal',4,{1:['=O'],3:['=O']},'アルデヒド(-al)が1位','ケトンの C=O は 3位の oxo-'],
+ ['4-hydroxybutanoic acid',4,{1:['=O','OH'],4:['OH']},'カルボン酸(-oic acid)が1位','OH は 4位の hydroxy-'],
+ ['2-hydroxypropanal',3,{1:['=O'],2:['OH']},'アルデヒド(-al)が1位','OH は 2位の hydroxy-'],
+ ['3-aminopropan-1-ol',3,{1:['OH'],3:['NH2']},'アルコール(-ol)が1位','NH₂ は 3位の amino-',['3-aminopropanol']],
+ ['5-chloropentan-2-ol',5,{2:['OH'],5:['Cl']},'アルコール(-ol)が2位','Cl は 5位の chloro-'],
+ ['4-aminobutanoic acid',4,{1:['=O','OH'],4:['NH2']},'カルボン酸(-oic acid)が1位','NH₂ は 4位の amino-'],
+ ['3-hydroxybutanal',4,{1:['=O'],3:['OH']},'アルデヒド(-al)が1位','OH は 3位の hydroxy-'],
+ ['2-aminopropanamide',3,{1:['=O','NH2'],2:['NH2']},'アミド(-amide)が1位','NH₂ は 2位の amino-'],
+ ['3-hydroxypropanenitrile',3,{1:['CN'],3:['OH']},'ニトリル(-nitrile)が1位','OH は 3位の hydroxy-'],
+ ['6-bromohexan-3-one',6,{3:['=O'],6:['Br']},'ケトン(-one)が3位','Br は 6位の bromo-'],
+ ['4-hydroxy-3-methylbutanal',4,{1:['=O'],3:['Me'],4:['OH']},'アルデヒド(-al)が1位','hydroxy- と methyl- は、アルファベット順(h → m)に並べる'],
+ ['2-chloro-3-hydroxybutanoic acid',4,{1:['=O','OH'],2:['Cl'],3:['OH']},'カルボン酸(-oic acid)が1位','chloro- と hydroxy- は、アルファベット順(c → h)に並べる'],
+ ['3-amino-2-hydroxybutanoic acid',4,{1:['=O','OH'],2:['OH'],3:['NH2']},'カルボン酸(-oic acid)が1位','amino- と hydroxy- は、アルファベット順(a → h)に並べる'],
+ ['4-bromo-3-oxobutanoic acid',4,{1:['=O','OH'],3:['=O'],4:['Br']},'カルボン酸(-oic acid)が1位','bromo- と oxo- は、アルファベット順(b → o)に並べる'],
+ ['2,3-dihydroxypropanal',3,{1:['=O'],2:['OH'],3:['OH']},'アルデヒド(-al)が1位','OH が2つなので dihydroxy-(2,3)'],
+ ['butane-1,4-diol',4,{1:['OH'],4:['OH']},'アルコール(-ol)が1位と4位','OH が2つなので -diol(1,4)'],
+ ['hexane-1,6-diamine',6,{1:['NH2'],6:['NH2']},'アミン(-amine)が1位と6位','NH₂ が2つなので -diamine(1,6)']
+];
+function chainStruct(n,g){
+  var a=[],b=[],i,Ln=Math.hypot(S,D);
+  for(i=0;i<n;i++){a.push(['',i*S,i%2?-D:0]);if(i)b.push([i-1,i,1]);}
+  for(i=0;i<n;i++){
+    var gs=g[i+1];if(!gs)continue;
+    var term=(i===0||i===n-1),up=(i%2===1),nb=i===0?1:i-1;
+    var vx=a[i][1]-a[nb][1],vy=a[i][2]-a[nb][2],vl=Math.hypot(vx,vy);vx/=vl;vy/=vl;
+    var dirs=term?(gs.length>1?[[0,up?-1:1],[vx,-vy]]:[[vx,-vy]]):[[0,up?-1:1]];
+    gs.forEach(function(t,k){
+      var d=dirs[k],lab='',ord=1,len=Ln;
+      if(t==='OH')lab='OH';else if(t==='=O'){lab='O';ord=2;}else if(t==='NH2')lab='NH2';
+      else if(t==='Cl'||t==='Br')lab=t;else if(t==='CN'){lab='N';ord=3;d=[vx,vy];len=44;}
+      a.push([lab,a[i][1]+d[0]*len,a[i][2]+d[1]*len]);b.push([i,a.length-1,ord]);
+    });
+  }
+  return {a:a,b:b};
 }
+var CPC=CPD.map(function(r){return {st:chainStruct(r[1],r[2]),en:r[0],cmp:true,n:r[1],main:r[3],sub:r[4],alts:r[5]||[],A:{name:r[0]}};});
+CPC.forEach(function(c){VALID[c.en]=1;c.alts.forEach(function(x){VALID[x]=1;});});
+
+/* ---- 選択肢 ---- */
+var $=function(i){return document.getElementById(i);};
+function shuffle(a){for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),t=a[i];a[i]=a[j];a[j]=t;}return a;}
+function okLoc(x){
+  if(/(oic acid|anal|amide|nitrile)$/.test(x)&&/(^|-)1-[a-z]/.test(x))return false;   /* 端の炭素に置換基は付けられない */
+  var m=x.match(/^(.*?)([a-z]+)-(\d)-(one|ol)$/);
+  if(m&&(m[1].match(/\d/g)||[]).indexOf(m[3])>=0)return false;                       /* 主基と同じ炭素に別の置換基 */
+  return true;
+}
+function locVar(w,n,ex){
+  var pos=[],i,res=[];
+  for(i=0;i<w.length;i++)if(/[0-9]/.test(w[i]))pos.push(i);
+  shuffle(pos).forEach(function(p){var ds=[],d;for(d=1;d<=n;d++)if(String(d)!==w[p])ds.push(d);
+    shuffle(ds).forEach(function(d){var x=w.slice(0,p)+d+w.slice(p+1);if(ex.indexOf(x)<0&&!VALID[x]&&okLoc(x)&&res.indexOf(x)<0)res.push(x);});});
+  return res;
+}
+function optionsFor(c){
+  var w=c.A.name,res;
+  if(c.cmp){
+    var ex=[w].concat(c.alts),sp=shuffle(variants(w).filter(function(x){return ex.indexOf(x)<0;})).slice(0,2),lv=locVar(w,c.n,ex).slice(0,1);
+    res=sp.concat(lv);
+    var more=shuffle(variants(w)).filter(function(x){return ex.indexOf(x)<0&&res.indexOf(x)<0;});
+    while(res.length<3&&more.length)res.push(more.shift());
+  }else res=pick3(w,c.alk);
+  return shuffle([w].concat(res));
+}
+
+/* ---- 出題の状態 ---- */
+var st={deck:'fg',mode:'choice',queue:[],ok:0,miss:0,total:0,cur:null,answered:false};
+function cards(){return st.deck==='fg'?FG:st.deck==='alk'?AK:CPC;}
+function restart(){var c=cards();st.queue=shuffle(c.map(function(_,i){return i;}));st.ok=0;st.miss=0;st.total=c.length;showNext();}
+function progress(){$('pt').textContent='正解 '+st.ok+' / '+st.total+(st.miss?'(ミス '+st.miss+')':'');$('pb').style.width=(st.total?100*st.ok/st.total:0)+'%';}
 function showNext(){
   var done=st.queue.length===0;
   $('quiz').style.display=done?'none':'contents';$('done').style.display=done?'flex':'none';
-  $('pt').textContent='正解 '+st.ok+' / '+st.total+(st.miss?'(ミス '+st.miss+')':'');$('pb').style.width=(st.total?100*st.ok/st.total:0)+'%';
+  progress();
   if(done){$('sum').textContent='ミス '+st.miss+' 回';return;}
-  var c=cards()[st.queue[0]],L=kindLabels(),ans=c.A[st.kind];
-  st.cur={c:c,ans:ans};st.answered=false;
-  var head=st.kind==='name'?(c.alk?'このアルカンの名前の綴りは?':'この官能基の名前の綴りは?')
-    :'「'+c.A.name+'」の'+L[st.kind==='suf'?1:2]+'の綴りは?';
-  $('q').innerHTML=svgOf(c.st)+'<div class="ja">'+c.ja+(st.kind==='name'?'':' / '+c.A.name)+'</div><div class="qa">'+head+'</div>';
-  var opts=shuffle([ans].concat(pick3(ans,c.alk&&st.kind==='name')));
-  $('opts').innerHTML='';
-  opts.forEach(function(o,i){var b=document.createElement('button');b.type='button';b.className='opt';b.setAttribute('data-o',o);
-    b.innerHTML='<b>'+'ABCD'.charAt(i)+'</b><span></span>';b.lastChild.textContent=o;$('opts').appendChild(b);});
+  var c=cards()[st.queue[0]];
+  st.cur={c:c,ans:c.A.name,opts:optionsFor(c)};st.answered=false;
   $('fb').className='fb';$('fb').innerHTML='';$('next').style.display='none';
+  renderQ();
 }
-function choose(btn){
-  if(st.answered)return;st.answered=true;
-  var val=btn.getAttribute('data-o'),good=val===st.cur.ans,c=st.cur.c,L=kindLabels();
-  Array.prototype.forEach.call($('opts').children,function(b){b.disabled=true;if(b.getAttribute('data-o')===st.cur.ans)b.classList.add('ok');});
-  if(!good)btn.classList.add('ng');
+/* 同じ問題のまま、答え方(選ぶ/入力)だけを切り替える */
+function renderQ(){
+  var c=st.cur.c,head=c.cmp?'この化合物の名前(IUPAC名)の綴りは?':c.alk?'このアルカンの名前の綴りは?':'この官能基の名前の綴りは?';
+  $('q').innerHTML=svgOf(c.st)+(c.cmp?'':'<div class="ja">'+c.ja+'</div>')+'<div class="qa">'+head+'</div>';
+  $('opts').innerHTML='';$('opts').style.display=st.mode==='choice'?'':'none';
+  $('tf').className='tf'+(st.mode==='type'?' on':'');$('inp').value='';$('inp').disabled=false;$('go').disabled=false;
+  if(st.mode==='choice')st.cur.opts.forEach(function(o,i){var b=document.createElement('button');b.type='button';b.className='opt';b.setAttribute('data-o',o);
+    b.innerHTML='<b>'+'ABCD'.charAt(i)+'</b><span></span>';b.lastChild.textContent=o;$('opts').appendChild(b);});
+  else $('inp').focus();
+}
+function norm(x){return x.normalize('NFKC').trim().toLowerCase().replace(/\s+/g,' ');}
+function loose(x){return x.replace(/[\s-]/g,'');}
+/* 入力した綴りと正解を比べて、ずれた文字に印を付ける(最長共通部分列) */
+function diffHtml(u,a){
+  var m=u.length,n=a.length,T=[],i,j;
+  for(i=0;i<=m;i++){T.push(new Array(n+1).fill(0));}
+  for(i=m-1;i>=0;i--)for(j=n-1;j>=0;j--)T[i][j]=u[i]===a[j]?T[i+1][j+1]+1:Math.max(T[i+1][j],T[i][j+1]);
+  var ru='',ra='';i=0;j=0;
+  function esc(c){return c==='<'?'&lt;':c==='&'?'&amp;':c;}
+  while(i<m&&j<n){
+    if(u[i]===a[j]){ru+=esc(u[i]);ra+=esc(a[j]);i++;j++;}
+    else if(T[i+1][j]>=T[i][j+1]){ru+='<span class="bad">'+esc(u[i])+'</span>';i++;}
+    else{ra+='<span class="bad">'+esc(a[j])+'</span>';j++;}
+  }
+  for(;i<m;i++)ru+='<span class="bad">'+esc(u[i])+'</span>';
+  for(;j<n;j++)ra+='<span class="bad">'+esc(a[j])+'</span>';
+  return '<div class="df"><small>あなたの答え</small><span>'+(ru||'(空欄)')+'</span><small>正しい綴り</small><span>'+ra+'</span></div>';
+}
+function finish(good,extra){
+  st.answered=true;var c=st.cur.c;
   var idx=st.queue.shift();
   if(good){st.ok++;}else{st.miss++;st.queue.splice(Math.min(3,st.queue.length),0,idx);}
-  $('pt').textContent='正解 '+st.ok+' / '+st.total+(st.miss?'(ミス '+st.miss+')':'');$('pb').style.width=(100*st.ok/st.total)+'%';
+  progress();
+  var info=c.cmp?'<div><b>'+c.en+'</b></div><div>主基: '+c.main+'。'+c.sub+'。</div><div class="pri">'+PRI+'</div>'
+    :'<div><b>'+c.en+'</b> / '+c.ja+'</div><div class="ex">'+(c.alk?'分子式 ':'例: ')+c.ex+'</div>';
   $('fb').className='fb on';
-  $('fb').innerHTML='<div class="v '+(good?'ok':'ng')+'">'+(good?'正解':'不正解。正しい綴りは '+st.cur.ans)+'</div>'
-    +'<div><b>'+c.en+'</b> / '+c.ja+'</div><div class="chips"><span class="chip"><small>'+L[1]+'</small>'+sub(c.suf)+'</span><span class="chip"><small>'+L[2]+'</small>'+c.pre+'</span></div><div class="ex">'+(c.alk?'分子式 ':'例: ')+c.ex+'</div>';
+  $('fb').innerHTML='<div class="v '+(good?'ok':'ng')+'">'+(good?'正解':(st.mode==='type'?'不正解':'不正解。正しい綴りは '+st.cur.ans))+'</div>'+(extra||'')+info;
   $('next').style.display='';$('next').focus();
 }
+function choose(btn){
+  if(st.answered)return;
+  var good=btn.getAttribute('data-o')===st.cur.ans;
+  Array.prototype.forEach.call($('opts').children,function(b){b.disabled=true;if(b.getAttribute('data-o')===st.cur.ans)b.classList.add('ok');});
+  if(!good)btn.classList.add('ng');
+  finish(good);
+}
+$('tf').addEventListener('submit',function(e){
+  e.preventDefault();if(st.answered)return;
+  var u=norm($('inp').value),c=st.cur.c;
+  if(!u){$('inp').focus();return;}
+  $('inp').disabled=true;$('go').disabled=true;
+  var good=[st.cur.ans].concat(c.alts||[]).some(function(x){return loose(u)===loose(x);});
+  finish(good,good?'':diffHtml(u,st.cur.ans));
+});
 $('opts').addEventListener('click',function(e){var b=e.target.closest('.opt');if(b)choose(b);});
 $('next').addEventListener('click',showNext);
 $('redo').addEventListener('click',restart);
 document.addEventListener('keydown',function(e){
-  if(/^[1-4]$/.test(e.key)&&!st.answered){var b=$('opts').children[+e.key-1];if(b)choose(b);}
+  if(st.mode==='choice'&&/^[1-4]$/.test(e.key)&&!st.answered){var b=$('opts').children[+e.key-1];if(b)choose(b);}
 });
-function seg(id,key,attr){$(id).addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;st[key]=b.getAttribute(attr);
-  Array.prototype.forEach.call($(id).children,function(x){x.setAttribute('aria-pressed',x===b?'true':'false');});restart();});}
-seg('deck','deck','data-d');seg('kind','kind','data-k');
+$('deck').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;st.deck=b.getAttribute('data-d');
+  Array.prototype.forEach.call($('deck').children,function(x){x.setAttribute('aria-pressed',x===b?'true':'false');});restart();});
+$('mode').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;st.mode=b.getAttribute('data-m');
+  Array.prototype.forEach.call($('mode').children,function(x){x.setAttribute('aria-pressed',x===b?'true':'false');});
+  if(st.cur&&!st.answered&&st.queue.length)renderQ();});
 restart();
 window.__q=st;
 </script>
